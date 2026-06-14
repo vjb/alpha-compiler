@@ -1,0 +1,11 @@
+openai
+python-dotenv
+pydantic
+requests
+pandas
+vectorbt
+mcp
+bnbagent-sdk
+eth-account
+web3
+pytest

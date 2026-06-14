@@ -1,0 +1,59 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environment
+venv/
+.venv/
+env/
+
+# Environment variables (SECRETS - never commit)
+.env
+.env.local
+.env.production
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Generated outputs (these are re-generated on each run)
+strategy_v1.json
+execute_strategy.py
+backtest_report.html
+strategy_changelog.json
+symbol_mappings_cache.json
+
+# Debug/probe scripts (development only)
+probe_*.py
+test_mcp_*.py
+test_http*.py
+test_sse.py
+test_waf*.py
+test_rest*.py
+test_fields*.py
+test_jsonrpc*.py
+search_*.py
+inspect_*.py
+print_*.py
+check_*.py
+run_mcp_*.py
+
+# Cloned repos
+skills_repo/
+
+# Logs
+*.log

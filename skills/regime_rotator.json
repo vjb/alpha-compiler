@@ -1,0 +1,62 @@
+{
+  "name": "regime_rotator",
+  "version": "2.0.0",
+  "description": "BEP-20 Regime Rotator Skill v2. Generates institutional-grade trading strategies for BEP-20 tokens using real CoinMarketCap Skill Hub MCP intelligence (33 cloud-executed analytical skills: macro regime, KOL sentiment, derivatives, on-chain metrics, narrative rotation, chart patterns). Compiles natural language investment theses into backtestable VectorBT strategy specs with dynamic AMM slippage modeling.",
+  "skill_hub_endpoint": "https://mcp.coinmarketcap.com/skill-hub/stream",
+  "skill_hub_transport": "streamable-http",
+  "skills_used": [
+    "crypto_macro_overview",
+    "monitor_market_sentiment_shift",
+    "altcoin_kol_sentiment",
+    "track_narrative_rotation",
+    "kline_pattern_recognition",
+    "detect_funding_rate_regime_shift",
+    "score_holder_concentration_risk",
+    "monitor_whale_transfer_anomalies",
+    "assess_altcoin_asset_structure",
+    "daily_market_overview"
+  ],
+  "inputs": {
+    "type": "object",
+    "properties": {
+      "investment_thesis": {
+        "type": "string",
+        "description": "Natural language investment thesis authored by human."
+      },
+      "target_assets": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "List of BEP-20 target assets to evaluate."
+      },
+      "risk_tolerance": {
+        "type": "string",
+        "description": "Risk tolerance profile (e.g., low, medium, high)."
+      },
+      "job_id": {
+        "type": "integer",
+        "description": "Optional ERC-8183 Job ID to verify escrow funding on-chain."
+      },
+      "backtest_range": {
+        "type": "string",
+        "enum": ["7d", "30d", "90d", "1y"],
+        "description": "Optional backtest timeframe range (default: 30d)."
+      }
+    },
+    "required": ["investment_thesis", "target_assets", "risk_tolerance"]
+  },
+  "outputs": {
+    "type": "object",
+    "properties": {
+      "strategy_spec": {
+        "type": "object",
+        "description": "The compiled machine-readable JSON backtestable strategy spec with Skill Hub intelligence metadata."
+      },
+      "skill_hub_skills_used": {
+        "type": "array",
+        "description": "List of CMC Skill Hub skills that were executed during compilation."
+      }
+    }
+  }
+}
