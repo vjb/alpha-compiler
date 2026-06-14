@@ -163,7 +163,7 @@ def recompile_strategy(thesis: str, assets: list, risk: str, backtest_range: str
     spec = compiler.compile(thesis, assets, risk, backtest_range)
     
     # Save strategy
-    with open("strategy_v1.json", "w") as f:
+    with open("strategy.json", "w") as f:
         f.write(spec.model_dump_json(indent=2))
     
     # Run backtest

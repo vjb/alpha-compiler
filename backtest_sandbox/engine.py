@@ -181,10 +181,10 @@ def fetch_cmc_historical_data(symbol: str, backtest_range: str = "30d") -> pd.Da
 
 def run_backtest():
     # 1. Load strategy spec
-    if not os.path.exists("strategy_v1.json"):
-        raise FileNotFoundError("strategy_v1.json not found. Run the compiler first.")
+    if not os.path.exists("strategy.json"):
+        raise FileNotFoundError("strategy.json not found. Run the compiler first.")
         
-    with open("strategy_v1.json", "r") as f:
+    with open("strategy.json", "r") as f:
         strategy = json.load(f)
         
     print(f"Loaded Strategy: '{strategy['strategy_name']}'")

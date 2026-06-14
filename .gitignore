@@ -31,7 +31,7 @@ Thumbs.db
 desktop.ini
 
 # Generated outputs (these are re-generated on each run)
-strategy_v1.json
+strategy.json
 execute_strategy.py
 backtest_report.html
 strategy_changelog.json

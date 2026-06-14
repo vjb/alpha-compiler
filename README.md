@@ -55,7 +55,7 @@ graph TD
 
     Compiler["2. Strategy Compiler (GPT-4o)<br>Thesis + BOTH MCP layers<br>→ StrategySpec JSON"]:::compiler
 
-    Strategy["strategy_v1.json<br>Machine-Readable Strategy Spec"]:::output
+    Strategy["strategy.json<br>Machine-Readable Strategy Spec"]:::output
     Backtest["backtest_report.html<br>Interactive Performance Dashboard"]:::output
     Changelog["strategy_changelog.json<br>Versioned Diff of Changes"]:::output
 
@@ -200,7 +200,7 @@ Avg Funding:      28.14 bps — crowded longs visible
 CAKE KOL:         mixed, thin higher-signal coverage, no KOL consensus
 ```
 
-**Compiled output (strategy_v1.json):**
+**Compiled output (strategy.json):**
 ```json
 {
   "strategy_name": "Bearish Defensive Stablecoin Rotation",
@@ -336,7 +336,7 @@ Every compilation produces **four deliverables**:
 
 | File | Format | Description |
 |------|--------|-------------|
-| `strategy_v1.json` | JSON | Machine-readable strategy spec with allocations, entry/exit rules, and intelligence summary from both MCP layers |
+| `strategy.json` | JSON | Machine-readable strategy spec with allocations, entry/exit rules, and intelligence summary from both MCP layers |
 | `backtest_report.html` | HTML | Interactive dark-themed dashboard with Chart.js performance curves, allocation table, and Skill Hub intelligence panel |
 | `strategy_changelog.json` | JSON | Version history with diffs — tracks regime shifts, weight rebalances, and asset changes across compilations |
 | `monitor_state.json` | JSON | Last recorded regime state for the regime monitor (enables shift detection) |

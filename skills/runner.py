@@ -66,8 +66,8 @@ def regime_rotator(investment_thesis: str, target_assets: list[str], risk_tolera
         backtest_range=backtest_range
     )
     
-    # Save spec to strategy_v1.json
-    output_filename = "strategy_v1.json"
+    # Save spec to strategy.json
+    output_filename = "strategy.json"
     with open(output_filename, "w") as f:
         json.dump(spec.model_dump(), f, indent=2)
     print(f"Compiled strategy saved to {output_filename}", file=sys.stderr)

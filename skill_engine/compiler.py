@@ -506,9 +506,9 @@ def compile_strategy_cli():
     compiler = ThesisToCodeStrategyCompiler()
     try:
         spec = compiler.compile(args.thesis, assets, args.risk, args.range)
-        with open("strategy_v1.json", "w") as f:
+        with open("strategy.json", "w") as f:
             f.write(spec.model_dump_json(indent=2))
-        print("Strategy Spec successfully compiled and saved to strategy_v1.json")
+        print("Strategy Spec successfully compiled and saved to strategy.json")
     except Exception as e:
         print(f"Compilation failed: {e}")
         raise e

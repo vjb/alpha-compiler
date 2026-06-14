@@ -140,7 +140,7 @@ async def compile_strategy(request: CompilationRequest):
         raise HTTPException(status_code=500, detail=f"Compilation failed: {e}")
     
     # Save strategy
-    with open("strategy_v1.json", "w") as f:
+    with open("strategy.json", "w") as f:
         f.write(spec.model_dump_json(indent=2))
     
     # 4. Run backtest

@@ -166,9 +166,9 @@ def record_strategy_version(new_strategy: dict, changelog_path: str = "strategy_
                 entry["diff_from_previous"] = diff
             except Exception:
                 entry["diff_from_previous"] = {"error": "Could not load previous strategy"}
-        elif os.path.exists("strategy_v1.json"):
+        elif os.path.exists("strategy.json"):
             try:
-                with open("strategy_v1.json", "r") as f:
+                with open("strategy.json", "r") as f:
                     old_strategy = json.load(f)
                 diff = diff_strategies(old_strategy, new_strategy)
                 entry["diff_from_previous"] = diff
@@ -241,8 +241,8 @@ def publish_to_ipfs(strategy: dict, report_html_path: str = "backtest_report.htm
 
 if __name__ == "__main__":
     # Demo: Load current strategy and record version
-    if os.path.exists("strategy_v1.json"):
-        with open("strategy_v1.json", "r") as f:
+    if os.path.exists("strategy.json"):
+        with open("strategy.json", "r") as f:
             strategy = json.load(f)
         
         entry = record_strategy_version(strategy)
@@ -255,7 +255,7 @@ if __name__ == "__main__":
             if cid:
                 print(f"IPFS CID: {cid}")
     else:
-        print("No strategy_v1.json found. Run the compiler first.")
+        print("No strategy.json found. Run the compiler first.")
 
 
 def publish_to_greenfield(

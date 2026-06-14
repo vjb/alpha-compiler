@@ -27,7 +27,7 @@ def run_example(thesis: str, assets: list, risk: str, backtest_range: str = "30d
         elapsed = time.time() - start
         
         # Save strategy
-        with open("strategy_v1.json", "w") as f:
+        with open("strategy.json", "w") as f:
             f.write(spec.model_dump_json(indent=2))
         
         print(f"\n{'='*70}")
@@ -100,7 +100,7 @@ def main():
     
     if spec1:
         print("\n\n✅ E2E TEST PASSED")
-        print(f"  Deliverables: strategy_v1.json, backtest_report.html, strategy_changelog.json")
+        print(f"  Deliverables: strategy.json, backtest_report.html, strategy_changelog.json")
     else:
         print("\n\n❌ E2E TEST FAILED")
         sys.exit(1)
