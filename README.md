@@ -55,9 +55,9 @@ graph TD
 
     Compiler["2. Strategy Compiler (GPT-4o)<br>Thesis + BOTH MCP layers<br>→ StrategySpec JSON"]:::compiler
 
-    Strategy["strategy.json<br>Machine-Readable Strategy Spec"]:::output
+    Strategy["strategy_v1.json<br>Machine-Readable Strategy Spec"]:::output
     Backtest["backtest_report.html<br>Interactive Performance Dashboard"]:::output
-    Changelog["changelog.json<br>Versioned Diff of Changes"]:::output
+    Changelog["strategy_changelog.json<br>Versioned Diff of Changes"]:::output
 
     Input --> Core
     Core --> SkillHub
