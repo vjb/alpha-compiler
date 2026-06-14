@@ -1,10 +1,13 @@
+import warnings
+warnings.filterwarnings("ignore")
+
 import os
 import json
 import time
 import asyncio
 import sys
 from typing import List, Literal, Dict, Any, Optional
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from dotenv import load_dotenv
 import pandas as pd
 import requests
@@ -87,6 +90,22 @@ class StrategySpec(BaseModel):
                 raise ValueError(f"Asset '{asset}' is not in the allowed BEP-20 token list.")
             normalized.append(allowed_upper[asset.upper()])
         return normalized
+
+    @field_validator('allocation_weights')
+    @classmethod
+    def validate_weights_sum(cls, weights: List[AssetAllocation]) -> List[AssetAllocation]:
+        total = sum(w.weight for w in weights)
+        if not (0.99 <= total <= 1.01):
+            raise ValueError(f"Sum of allocation weights must be between 0.99 and 1.01, got {total}")
+        return weights
+
+    @model_validator(mode='after')
+    def validate_allocation_symbols(self) -> 'StrategySpec':
+        target_set = set(self.target_assets)
+        for alloc in self.allocation_weights:
+            if alloc.symbol not in target_set:
+                raise ValueError(f"Allocation symbol '{alloc.symbol}' is not present in target_assets.")
+        return self
 
 def validate_thesis_text(thesis: str):
     """Scan thesis for any disallowed assets and raise ValueError if found."""

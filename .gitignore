@@ -58,3 +58,7 @@ skills_repo/
 
 # Logs
 *.log
+
+# Data Cache & Agent Workspaces
+backtest_sandbox/data_cache/
+.agents/

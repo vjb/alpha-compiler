@@ -5,6 +5,7 @@ import vectorbt as vbt
 import requests
 import operator
 import time
+import warnings
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -87,7 +88,24 @@ def fetch_cmc_historical_data(symbol: str, backtest_range: str = "30d") -> pd.Da
     Fetch historical data.
     First tries the official Pro API endpoint /v2/cryptocurrency/ohlcv/historical.
     If it fails due to plan limitations, falls back to the public data-api chart endpoint.
+    Uses local file-based cache and retries for robustness.
     """
+    cache_dir = os.path.join("backtest_sandbox", "data_cache")
+    os.makedirs(cache_dir, exist_ok=True)
+    cache_path = os.path.join(cache_dir, f"{symbol.upper()}_{backtest_range}.csv")
+    
+    # Check cache first
+    if os.path.exists(cache_path):
+        mtime = os.path.getmtime(cache_path)
+        if time.time() - mtime < 24 * 3600:
+            try:
+                df = pd.read_csv(cache_path, index_col="date", parse_dates=True)
+                if not df.empty:
+                    print(f"Loaded cached historical data for {symbol} ({backtest_range}) from {cache_path}")
+                    return df
+            except Exception as cache_err:
+                print(f"Failed to load cache file {cache_path}: {cache_err}. Attempting API fetch...")
+
     api_key = os.environ.get("CMC_API_KEY")
     if not api_key:
         raise ValueError("CMC_API_KEY is not set in environment.")
@@ -100,84 +118,139 @@ def fetch_cmc_historical_data(symbol: str, backtest_range: str = "30d") -> pd.Da
         "1y": 365
     }
     count = count_map.get(backtest_range, 30)
-
-    print(f"Attempting to fetch historical data ({backtest_range}) for {symbol} via official Pro API...")
-    url = "https://pro-api.coinmarketcap.com/v2/cryptocurrency/ohlcv/historical"
-    headers = {
-        "X-CMC_PRO_API_KEY": api_key,
-        "Accept": "application/json"
-    }
-    params = {
-        "symbol": symbol,
-        "count": count,
-        "interval": "1d"
-    }
     
+    last_err = None
+    df = None
+
+    # Try 1: Pro API with retry loop
     try:
-        res = requests.get(url, headers=headers, params=params, timeout=5.0)
-        if res.status_code == 200:
-            data = res.json()
-            quotes = data["data"][symbol][0]["quotes"]
-            records = []
-            for q in quotes:
-                ts = pd.to_datetime(q["time_open"])
-                records.append({
-                    "date": ts,
-                    "open": q["quote"]["USD"]["open"],
-                    "high": q["quote"]["USD"]["high"],
-                    "low": q["quote"]["USD"]["low"],
-                    "close": q["quote"]["USD"]["close"],
-                    "volume": q["quote"]["USD"]["volume"]
-                })
-            df = pd.DataFrame(records)
-            df.set_index("date", inplace=True)
-            df.sort_index(inplace=True)
-            print(f"Successfully fetched historical data for {symbol} via Pro API.")
-            return df
-        else:
-            print(f"Pro API returned status {res.status_code}: {res.text[:150]}")
-            raise requests.HTTPError("Fallback triggered")
-    except Exception as e:
-        print(f"Pro API failed/unsupported ({e}). Pivoting to keyless public data-api endpoint...")
-        
-        # 1. Resolve to CMC ID
-        cmc_id = fetch_cmc_map_id(symbol, api_key)
-        
-        # 2. Fetch from detail/chart endpoint
-        range_map = {
-            "7d": "7D",
-            "30d": "1M",
-            "90d": "3M",
-            "1y": "1Y"
+        print(f"Attempting to fetch historical data ({backtest_range}) for {symbol} via official Pro API...")
+        url = "https://pro-api.coinmarketcap.com/v2/cryptocurrency/ohlcv/historical"
+        headers = {
+            "X-CMC_PRO_API_KEY": api_key,
+            "Accept": "application/json"
         }
-        api_range = range_map.get(backtest_range, "1M")
+        params = {
+            "symbol": symbol,
+            "count": count,
+            "interval": "1d"
+        }
         
-        chart_url = f"https://api.coinmarketcap.com/data-api/v3/cryptocurrency/detail/chart?id={cmc_id}&range={api_range}"
-        res = requests.get(chart_url, timeout=5.0)
-        res.raise_for_status()
-        points = res.json().get("data", {}).get("points", {})
-        if not points:
-            raise ValueError(f"No chart points found for {symbol} (ID: {cmc_id})")
+        for attempt in range(1, 4):
+            try:
+                res = requests.get(url, headers=headers, params=params, timeout=5.0)
+                if res.status_code == 200:
+                    data = res.json()
+                    quotes = data["data"][symbol][0]["quotes"]
+                    records = []
+                    for q in quotes:
+                        ts = pd.to_datetime(q["time_open"])
+                        records.append({
+                            "date": ts,
+                            "open": q["quote"]["USD"]["open"],
+                            "high": q["quote"]["USD"]["high"],
+                            "low": q["quote"]["USD"]["low"],
+                            "close": q["quote"]["USD"]["close"],
+                            "volume": q["quote"]["USD"]["volume"]
+                        })
+                    df = pd.DataFrame(records)
+                    df.set_index("date", inplace=True)
+                    df.sort_index(inplace=True)
+                    print(f"Successfully fetched historical data for {symbol} via Pro API.")
+                    # Save to cache
+                    df.to_csv(cache_path)
+                    return df
+                else:
+                    print(f"Pro API status code {res.status_code} on attempt {attempt}: {res.text[:150]}")
+                    if attempt < 3:
+                        time.sleep(2)
+                    else:
+                        raise requests.HTTPError(f"Pro API status code {res.status_code}")
+            except Exception as e:
+                print(f"Attempt {attempt} for Pro API failed: {e}")
+                if attempt < 3:
+                    time.sleep(2)
+                else:
+                    raise e
+    except Exception as pro_err:
+        last_err = pro_err
+        print(f"Pro API failed/unsupported. Pivoting to keyless public data-api endpoint...")
+        
+        try:
+            # 1. Resolve to CMC ID (retry loop to be robust)
+            cmc_id = None
+            for map_attempt in range(1, 4):
+                try:
+                    cmc_id = fetch_cmc_map_id(symbol, api_key)
+                    break
+                except Exception as map_err:
+                    print(f"Attempt {map_attempt} to map symbol {symbol} failed: {map_err}")
+                    if map_attempt < 3:
+                        time.sleep(2)
+                    else:
+                        raise map_err
             
-        records = []
-        for ts_str in sorted(points.keys()):
-            ts = pd.to_datetime(int(ts_str), unit="s")
-            val = points[ts_str]["v"]
-            close_val = val[0]
-            vol_val = val[1] if len(val) > 1 else 0.0
-            records.append({
-                "date": ts,
-                "open": close_val,
-                "high": close_val,
-                "low": close_val,
-                "close": close_val,
-                "volume": vol_val
-            })
-        df = pd.DataFrame(records)
-        df.set_index("date", inplace=True)
-        df.sort_index(inplace=True)
-        print(f"Successfully fetched historical data for {symbol} (ID: {cmc_id}) via public chart API.")
-        return df
+            # 2. Fetch from detail/chart endpoint
+            range_map = {
+                "7d": "7D",
+                "30d": "1M",
+                "90d": "3M",
+                "1y": "1Y"
+            }
+            api_range = range_map.get(backtest_range, "1M")
+            chart_url = f"https://api.coinmarketcap.com/data-api/v3/cryptocurrency/detail/chart?id={cmc_id}&range={api_range}"
+            
+            for attempt in range(1, 4):
+                try:
+                    res = requests.get(chart_url, timeout=5.0)
+                    res.raise_for_status()
+                    points = res.json().get("data", {}).get("points", {})
+                    if not points:
+                        raise ValueError(f"No chart points found for {symbol} (ID: {cmc_id})")
+                        
+                    records = []
+                    for ts_str in sorted(points.keys()):
+                        ts = pd.to_datetime(int(ts_str), unit="s")
+                        val = points[ts_str]["v"]
+                        close_val = val[0]
+                        vol_val = val[1] if len(val) > 1 else 0.0
+                        records.append({
+                            "date": ts,
+                            "open": close_val,
+                            "high": close_val,
+                            "low": close_val,
+                            "close": close_val,
+                            "volume": vol_val
+                        })
+                    df = pd.DataFrame(records)
+                    df.set_index("date", inplace=True)
+                    df.sort_index(inplace=True)
+                    print(f"Successfully fetched historical data for {symbol} (ID: {cmc_id}) via public chart API.")
+                    # Save to cache
+                    df.to_csv(cache_path)
+                    return df
+                except Exception as chart_err:
+                    print(f"Attempt {attempt} for keyless chart fallback API failed: {chart_err}")
+                    if attempt < 3:
+                        time.sleep(2)
+                    else:
+                        raise chart_err
+        except Exception as fallback_err:
+            last_err = fallback_err
+            
+    # Fallback of last resort: Load from cache (even if older than 24 hours)
+    print(f"Historical data fetch failed for {symbol}. Attempting fallback cache load...")
+    if os.path.exists(cache_path):
+        try:
+            df = pd.read_csv(cache_path, index_col="date", parse_dates=True)
+            if not df.empty:
+                print(f"Loaded fallback cached historical data for {symbol} ({backtest_range}) from {cache_path}")
+                return df
+        except Exception as cache_err:
+            print(f"Fallback cache load failed: {cache_err}")
+            
+    # Raise the last encountered error if cache is unavailable
+    raise last_err
 
 def run_backtest():
     # 1. Load strategy spec
@@ -364,27 +437,62 @@ def run_backtest():
     
     # 7. Output professional statistics
     print("\n================== Professional Quant Statistics ==================")
-    for col in portfolio.wrapper.columns:
-        print(f"\n--- Asset: {col} ---")
-        col_stats = portfolio[col].stats()
-        print(col_stats.to_string())
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        for col in portfolio.wrapper.columns:
+            print(f"\n--- Asset: {col} ---")
+            col_stats = portfolio[col].stats()
+            print(col_stats.to_string())
     print("===================================================================")
     
-    # Explicit highlights
-    mean_ret = portfolio.total_return().mean() * 100
-    bench_ret = benchmark.total_return().mean() * 100
-    mean_sharpe = portfolio.sharpe_ratio().mean()
-    mean_drawdown = portfolio.max_drawdown().mean() * 100
+    # True unified portfolio statistics calculation with warning suppression
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        
+        # 1. Obtain the combined portfolio value curve over time
+        total_value = portfolio.value().sum(axis=1)
+        
+        # 2. Compute portfolio daily returns
+        daily_returns = total_value.pct_change().fillna(0.0)
+        
+        # 3. Calculate true annualized return
+        if len(total_value) > 0 and total_value.iloc[0] != 0:
+            true_ann_return = ((total_value.iloc[-1] / total_value.iloc[0]) ** (252 / len(total_value)) - 1) * 100
+        else:
+            true_ann_return = 0.0
+            
+        # 4. Calculate true annualized volatility
+        true_ann_volatility = daily_returns.std() * (252 ** 0.5) * 100
+        
+        # 5. Calculate true Sharpe ratio
+        true_sharpe = (daily_returns.mean() / (daily_returns.std() + 1e-9)) * (252 ** 0.5)
+        
+        # 6. Calculate true Max Drawdown
+        dd = (total_value - total_value.cummax()) / total_value.cummax() * 100
+        true_max_dd = dd.min()
+        
+        # Compute benchmark unified statistics for comparison
+        bench_total_value = benchmark.value().sum(axis=1)
+        bench_daily_returns = bench_total_value.pct_change().fillna(0.0)
+        if len(bench_total_value) > 0 and bench_total_value.iloc[0] != 0:
+            bench_true_ann_return = ((bench_total_value.iloc[-1] / bench_total_value.iloc[0]) ** (252 / len(bench_total_value)) - 1) * 100
+        else:
+            bench_true_ann_return = 0.0
+        bench_true_ann_volatility = bench_daily_returns.std() * (252 ** 0.5) * 100
+        bench_true_sharpe = (bench_daily_returns.mean() / (bench_daily_returns.std() + 1e-9)) * (252 ** 0.5)
+        bench_dd = (bench_total_value - bench_total_value.cummax()) / bench_total_value.cummax() * 100
+        bench_true_max_dd = bench_dd.min()
     
-    print(f"\nPortfolio Mean Total Return: {mean_ret:.2f}%")
-    print(f"Benchmark Mean Total Return: {bench_ret:.2f}%")
-    print(f"Portfolio Mean Sharpe Ratio: {mean_sharpe:.4f}")
-    print(f"Portfolio Mean Max Drawdown: {mean_drawdown:.2f}%")
+    print(f"\nPortfolio True Annualized Return: {true_ann_return:.2f}%")
+    print(f"Benchmark True Annualized Return: {bench_true_ann_return:.2f}%")
+    print(f"Portfolio True Annualized Volatility: {true_ann_volatility:.2f}%")
+    print(f"Portfolio True Sharpe Ratio: {true_sharpe:.4f}")
+    print(f"Portfolio True Max Drawdown: {true_max_dd:.2f}%")
     
     # Extract timeseries for Chart.js
     dates_list = portfolio.value().index.strftime('%Y-%m-%d').tolist()
-    portfolio_value_curve = portfolio.value().mean(axis=1).tolist()
-    benchmark_value_curve = benchmark.value().mean(axis=1).tolist()
+    portfolio_value_curve = total_value.tolist()
+    benchmark_value_curve = bench_total_value.tolist()
     
     # Compute per-asset return curves for multi-line chart
     per_asset_curves = {}
@@ -654,23 +762,27 @@ def run_backtest():
         
         {skill_hub_html}
         
-        <h2>📊 Performance Metrics</h2>
+        <h2>📊 Performance Metrics (Unified Portfolio)</h2>
         <div class="grid">
             <div class="card">
-                <div class="card-title">Portfolio Return</div>
-                <div class="card-value {'positive' if mean_ret >= 0 else 'negative'}">{mean_ret:.2f}%</div>
+                <div class="card-title">Portfolio Ann. Return</div>
+                <div class="card-value {'positive' if true_ann_return >= 0 else 'negative'}">{true_ann_return:.2f}%</div>
             </div>
             <div class="card">
-                <div class="card-title">Benchmark Return</div>
-                <div class="card-value {'positive' if bench_ret >= 0 else 'negative'}">{bench_ret:.2f}%</div>
+                <div class="card-title">Benchmark Ann. Return</div>
+                <div class="card-value {'positive' if bench_true_ann_return >= 0 else 'negative'}">{bench_true_ann_return:.2f}%</div>
             </div>
             <div class="card">
-                <div class="card-title">Mean Sharpe Ratio</div>
-                <div class="card-value">{mean_sharpe:.4f}</div>
+                <div class="card-title">Ann. Volatility</div>
+                <div class="card-value">{true_ann_volatility:.2f}%</div>
+            </div>
+            <div class="card">
+                <div class="card-title">Sharpe Ratio</div>
+                <div class="card-value">{true_sharpe:.4f}</div>
             </div>
             <div class="card">
                 <div class="card-title">Max Drawdown</div>
-                <div class="card-value negative">{mean_drawdown:.2f}%</div>
+                <div class="card-value negative">{true_max_dd:.2f}%</div>
             </div>
         </div>
 

@@ -372,6 +372,35 @@ cp .env.example .env
 #   BSC_PRIVATE_KEY=your_bsc_private_key (optional, for on-chain identity + escrow)
 ```
 
+### BSC Testnet Configuration & Token Acquisition
+
+To execute strategies live on the BSC Testnet, configure your environment with the following network and token settings:
+
+#### BSC Testnet Network Details
+- **Network Name**: BNB Smart Chain Testnet
+- **New RPC URL**: `https://data-seed-prebsc-1-s1.binance.org:8545`
+- **Chain ID**: 97
+- **Currency Symbol**: tBNB
+- **Block Explorer**: `https://testnet.bscscan.com`
+
+#### Faucet Guidance
+- Direct users to the official BNB Chain Discord faucet or official faucets to request test BNB (tBNB).
+
+#### Mapped BEP-20 Testnet Token Addresses
+The active BEP-20 testnet tokens mapped in `execute_strategy.py` are:
+- **WBNB**: `0xae13d989daC2f0dEbFf460aC112a837C89BAa7cd`
+- **USDT**: `0x337610d27c682E347C9cD60BD4b3b107C9d34dDd`
+- **USDC**: `0x64544E40E59acD492068F436F824fF7ccC55a539`
+- **CAKE**: `0xF9d27376e1E5dcd1e6dD49842F5605d39A4D30c7`
+- **FLOKI**: `0x53B026e6A1A7036494F3b98Cc819582d9213854F`
+
+*Note: All other 144 allowed tokens are dynamically mapped to `FLOKI` on testnet to ensure execution liquidity.*
+
+#### Live Execution Script
+You can run the live execution script to monitor signal triggers and perform swaps on-chain:
+- **Command**: `python execute_strategy.py`
+- **Requirements**: `.env` must contain `BSC_PRIVATE_KEY` and `CMC_API_KEY`.
+
 ### Run
 
 **CLI mode:**
@@ -408,7 +437,7 @@ python -m skill_engine.monitor \
   --interval 14400
 ```
 
-**Unit tests (29 tests):**
+**Unit tests (41 tests):**
 ```bash
 python -m pytest tests/ -v
 ```
