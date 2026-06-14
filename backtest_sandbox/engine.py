@@ -278,22 +278,24 @@ def run_backtest():
                     price_drop = (-close_series.pct_change()).clip(lower=0).fillna(0.0)
                     indicator_series = volume_series * 0.0005 * rolling_std * (1.0 + price_drop * 10.0)
                 # New Skill Hub-derived indicators (point-in-time constants)
+                # Note: During backtesting, these are approximated since historical
+                # Skill Hub data isn't available. The real Skill Hub values inform the
+                # strategy compilation; backtesting uses market-derived proxies.
                 elif indicator_name == "kol_sentiment_bias":
-                    # Constant signal from KOL sentiment at compilation time
-                    indicator_series = pd.Series(threshold * 0.5, index=close_series.index)  # Will be compared against threshold
-                    # Use price momentum as a proxy for historical sentiment variation
-                    momentum = close_series.pct_change(5).clip(-1, 1).fillna(0.0)
-                    indicator_series = momentum
+                    # Proxy: 5-period price momentum as sentiment proxy (-1 to +1 range)
+                    indicator_series = close_series.pct_change(5).clip(-1, 1).fillna(0.0)
                 elif indicator_name == "funding_rate_bps":
-                    # Constant funding rate signal
-                    indicator_series = pd.Series(threshold, index=close_series.index)
+                    # Proxy: Rolling volatility scaled to basis points as leverage proxy
+                    # High volatility → high funding stress, low volatility → low funding
+                    rolling_vol = close_series.pct_change().rolling(7).std().fillna(0.02)
+                    indicator_series = rolling_vol * 10000  # Convert to bps scale
                 elif indicator_name == "sentiment_regime_score":
                     # Fear & Greed as a constant + volatility-adjusted variation
                     base = fg_value
                     vol_adj = close_series.pct_change().rolling(7).std().fillna(0.02) * 500
                     indicator_series = pd.Series(base, index=close_series.index) - vol_adj
                 elif indicator_name == "whale_anomaly_score":
-                    # Use volume spikes as proxy for whale activity in backtesting
+                    # Proxy: Volume spike ratio relative to 14-period moving average
                     vol_ma = volume_series.rolling(14).mean()
                     indicator_series = (volume_series / (vol_ma + 1e-9)).fillna(1.0)
                 else:

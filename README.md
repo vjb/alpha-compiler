@@ -24,7 +24,7 @@
 
 It doesn't just template rules onto indicators. It **thinks**:
 
-1. **Gathers live intelligence** from 33+ CMC Skill Hub MCP skills (macro regime, KOL sentiment, funding rates, chart patterns, narrative rotation)
+1. **Gathers live intelligence** from the CMC Skill Hub MCP (macro regime, KOL sentiment, funding rates, chart patterns, narrative rotation)
 2. **Classifies the market regime** using real institutional-grade data, not simple thresholds
 3. **Compiles a strategy spec** via structured LLM output, informed by the intelligence
 4. **Backtests it** against real CMC price history with dynamic AMM slippage modeling
@@ -83,6 +83,8 @@ alpha-compiler/
 ├── skills/
 │   ├── runner.py            # MCP server (FastMCP) — exposes the skill as a tool
 │   └── regime_rotator.json  # Skill schema definition
+├── tests/
+│   └── test_unit.py         # 26 pytest tests (spec validation, slippage, extractors)
 ├── test_e2e_runner.py       # End-to-end validation
 └── requirements.txt
 ```
@@ -91,7 +93,7 @@ alpha-compiler/
 
 | Layer | Component | How We Use It |
 |-------|-----------|---------------|
-| **L1 · Data & Signal** | CMC Skill Hub MCP | `find_skill` + `execute_skill` via Streamable HTTP — 10+ skills called per compilation |
+| **L1 · Data & Signal** | CMC Skill Hub MCP | `find_skill` + `execute_skill` via Streamable HTTP — 5 core skills called per compilation |
 | **L1 · Data & Signal** | CMC Data API | REST fallback for historical price charts and token mappings |
 | **L3 · Chain & SDK** | BNB AI Agent SDK | ERC-8004 on-chain agent identity + ERC-8183 escrow settlement |
 | **L3 · Chain & SDK** | PancakeSwap V2 | Generated `web3.py` execution script for BSC swaps |
@@ -349,6 +351,11 @@ python -m skills.runner --transport stdio
 **E2E test:**
 ```bash
 python test_e2e_runner.py
+```
+
+**Unit tests (26 tests):**
+```bash
+python -m pytest tests/ -v
 ```
 
 ---

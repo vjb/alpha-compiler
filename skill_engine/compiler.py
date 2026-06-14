@@ -22,12 +22,11 @@ from skill_engine.skill_hub_client import (
 
 load_dotenv()
 
-# List of common disallowed tokens to check in the thesis text
+# Tokens that are NOT BEP-20 and should not appear in a BSC thesis
+# Note: Only includes assets that are NOT in the ALLOWED_BEP20_TOKENS list
 DISALLOWED_TOKENS_LOWER = {
-    "btc", "bitcoin", "sol", "solana", "ada", "cardano", "xrp", "ripple", 
-    "dot", "polkadot", "doge", "dogecoin", "shib", "shiba", "avax", "avalanche", 
-    "trx", "tron", "matic", "polygon", "ltc", "litecoin", "near", "bch", "pepe", 
-    "wif", "sui", "optimism", "op", "arbitrum", "arb"
+    "btc", "bitcoin", "sol", "solana", "matic", "polygon", 
+    "near", "sui", "optimism", "op", "arbitrum", "arb"
 }
 
 class SignalRule(BaseModel):

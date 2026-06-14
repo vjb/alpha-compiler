@@ -20,7 +20,8 @@ def get_wallet_provider():
         temp_acct = Account.create()
         private_key = temp_acct.key.hex()
         
-    wallet = EVMWalletProvider(password="secure-pass-123", private_key=private_key, persist=False)
+    wallet_password = os.environ.get("WALLET_PASSWORD", os.urandom(16).hex())
+    wallet = EVMWalletProvider(password=wallet_password, private_key=private_key, persist=False)
     print(f"EVM Wallet Provider initialized. Address: {wallet.address}")
     return wallet
 

@@ -8,7 +8,7 @@ import json
 import time
 import hashlib
 from typing import Dict, Any, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 def compute_strategy_hash(strategy: dict) -> str:
@@ -25,7 +25,7 @@ def diff_strategies(old: dict, new: dict) -> dict:
     Returns a dict describing what changed between versions.
     """
     diff = {
-        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "old_hash": compute_strategy_hash(old),
         "new_hash": compute_strategy_hash(new),
         "changes": []

@@ -139,9 +139,13 @@ def execute_swap(w3, account, path, amount_in_wei):
     nonce = w3.eth.get_transaction_count(account.address)
     
     if is_bnb:
-        # Swap BNB -> Token
+        # Swap BNB -> Token with 2% slippage protection
+        # Get expected output amount first
+        amounts_out = router.functions.getAmountsOut(amount_in_wei, path).call()
+        min_out = int(amounts_out[-1] * 0.98)  # 2% slippage tolerance
+        print(f"Expected output: {amounts_out[-1]}, Min accepted (2% slip): {min_out}")
         tx = router.functions.swapExactETHForTokens(
-            0, # amountOutMin (set to 0 for simplicity, adjust for slippage protection in prod)
+            min_out, # 2% slippage protection
             path,
             account.address,
             deadline
@@ -259,9 +263,15 @@ def main():
             wbnb_address = TOKEN_ADDRESSES.get("WBNB")
             if asset_address and wbnb_address:
                 path = [wbnb_address, asset_address]
-                print(f"Swapping 0.01 BNB for {asset}...")
+                # Use allocation weight to determine trade size
+                alloc_map = {w['symbol']: w['weight'] for w in STRATEGY['allocation_weights']}
+                weight = alloc_map.get(asset, 0.1)
+                bnb_balance = w3.eth.get_balance(account.address)
+                trade_amount = int(bnb_balance * weight * 0.95)  # 95% of weighted share (keep gas)
+                trade_amount = max(trade_amount, w3.to_wei('0.001', 'ether'))  # Min 0.001 BNB
+                print(f"Swapping {w3.from_wei(trade_amount, 'ether'):.4f} BNB ({weight*100:.0f}% weight) for {asset}...")
                 try:
-                    execute_swap(w3, account, path, w3.to_wei('0.01', 'ether'))
+                    execute_swap(w3, account, path, trade_amount)
                 except Exception as e:
                     print(f"Swap execution failed: {e}")
             else:
