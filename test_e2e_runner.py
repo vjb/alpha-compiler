@@ -1,6 +1,6 @@
 """
-End-to-end test: Compile strategy with Skill Hub MCP, run backtest, generate all deliverables.
-Captures output for README examples.
+End-to-end test: Compile strategy with Core MCP + Skill Hub MCP, run backtest,
+record version, publish deliverables. Captures output for README examples.
 """
 import json
 import sys
@@ -52,32 +52,45 @@ def run_example(thesis: str, assets: list, risk: str, backtest_range: str = "30d
         from backtest_sandbox.engine import run_backtest
         run_backtest()
         
-        # Generate execution script
-        from skill_engine.exporter import generate_execution_script
-        script = generate_execution_script(spec.model_dump())
-        with open("execute_strategy.py", "w") as f:
-            f.write(script)
-        print("PancakeSwap execution script generated: execute_strategy.py")
+        # Record strategy version (publisher)
+        print(f"\n{'='*70}")
+        print("RECORDING VERSION & PUBLISHING...")
+        print(f"{'='*70}")
+        from skill_engine.publisher import record_strategy_version, publish_deliverables
+        version_entry = record_strategy_version(spec.model_dump())
+        print(f"Version: v{version_entry.get('version', '?')}")
+        print(f"Hash: {version_entry.get('hash', '?')}")
+        if "diff_from_previous" in version_entry:
+            diff = version_entry["diff_from_previous"]
+            print(f"Changes from previous: {diff.get('total_changes', 0)} modifications")
+            for change in diff.get("changes", []):
+                print(f"  - {change['type']}: {change.get('field', '')}")
+        
+        # Publish deliverables (Greenfield + IPFS — will gracefully skip if keys not set)
+        storage_urls = publish_deliverables(spec.model_dump())
+        if storage_urls.get("greenfield") or storage_urls.get("ipfs"):
+            print(f"Published to: {json.dumps(storage_urls)}")
         
         print(f"\n{'='*70}")
-        print(f"EXAMPLE '{label}' COMPLETE - All deliverables generated")
+        print(f"EXAMPLE '{label}' COMPLETE — All deliverables generated")
         print(f"{'='*70}")
         
-        return True
+        return spec
         
     except Exception as e:
         print(f"\nERROR: {e}")
         import traceback
         traceback.print_exc()
-        return False
+        return None
 
 def main():
     print("="*70)
-    print("ALPHA COMPILER - END-TO-END VALIDATION")
+    print("ALPHA COMPILER — END-TO-END VALIDATION")
+    print("Core MCP (12 tools) + Skill Hub MCP (10 skills) + VectorBT + Publisher")
     print("="*70)
     
     # Example 1: Bearish defensive rotation
-    ok1 = run_example(
+    spec1 = run_example(
         thesis="Rotate into defensive positions during high fear regimes, overweight stablecoins when market sentiment turns bearish",
         assets=["CAKE", "FLOKI"],
         risk="medium",
@@ -85,8 +98,9 @@ def main():
         label="Bearish Defensive Rotation"
     )
     
-    if ok1:
+    if spec1:
         print("\n\n✅ E2E TEST PASSED")
+        print(f"  Deliverables: strategy_v1.json, backtest_report.html, strategy_changelog.json")
     else:
         print("\n\n❌ E2E TEST FAILED")
         sys.exit(1)

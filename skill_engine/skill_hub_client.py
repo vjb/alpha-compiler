@@ -280,64 +280,101 @@ class SkillHubClient:
     def gather_compilation_intelligence(self, target_assets: List[str]) -> dict:
         """
         Gather all intelligence needed for strategy compilation.
-        Calls multiple skills and aggregates results.
+        Calls ALL 10 Skill Hub skills and aggregates results.
         
         Returns a structured dict with:
+        - daily_overview: Market overview brief
         - macro_regime: Full macro regime classification
         - sentiment_regime: Market sentiment state  
         - narrative_rotation: Trending themes
-        - per_asset: {symbol: {kol_sentiment, holder_risk, whale_activity, kline_patterns}}
+        - per_asset: {symbol: {kol_sentiment, funding_regime, holder_risk, 
+                               whale_activity, asset_structure, kline_patterns}}
         """
         print("[SkillHub] ═══════════════════════════════════════════════", file=sys.stderr)
-        print("[SkillHub] Gathering compilation intelligence...", file=sys.stderr)
+        print("[SkillHub] Gathering FULL compilation intelligence (10 skills)...", file=sys.stderr)
         print(f"[SkillHub] Target assets: {target_assets}", file=sys.stderr)
         print("[SkillHub] ═══════════════════════════════════════════════", file=sys.stderr)
         
+        non_stable_assets = [a for a in target_assets if a not in ("USDT", "USDC", "DAI", "FDUSD", "TUSD", "USD1", "USDe", "USDD")]
+        total_calls = 4 + len(non_stable_assets) * 5  # 4 global + 5 per-asset
+        call_num = 0
+        
         intelligence = {
             "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "daily_overview": {},
             "macro_regime": {},
             "sentiment_regime": {},
             "narrative_rotation": {},
-            "per_asset": {}
+            "per_asset": {},
+            "skills_called": [],
         }
         
-        # 1. Global macro regime
-        print("[SkillHub] [1/4] Fetching macro regime...", file=sys.stderr)
+        # 1. Daily Market Overview (warm-up context)
+        call_num += 1
+        print(f"[SkillHub] [{call_num}/{total_calls}] daily_market_overview...", file=sys.stderr)
+        intelligence["daily_overview"] = self.get_daily_overview()
+        intelligence["skills_called"].append("daily_market_overview")
+        
+        # 2. Global macro regime
+        call_num += 1
+        print(f"[SkillHub] [{call_num}/{total_calls}] crypto_macro_overview...", file=sys.stderr)
         intelligence["macro_regime"] = self.get_macro_regime()
+        intelligence["skills_called"].append("crypto_macro_overview")
         
-        # 2. Market sentiment
-        print("[SkillHub] [2/4] Fetching sentiment regime...", file=sys.stderr)
+        # 3. Market sentiment
+        call_num += 1
+        print(f"[SkillHub] [{call_num}/{total_calls}] monitor_market_sentiment_shift...", file=sys.stderr)
         intelligence["sentiment_regime"] = self.get_sentiment_regime()
+        intelligence["skills_called"].append("monitor_market_sentiment_shift")
         
-        # 3. Narrative rotation
-        print("[SkillHub] [3/4] Fetching narrative rotation...", file=sys.stderr)
+        # 4. Narrative rotation
+        call_num += 1
+        print(f"[SkillHub] [{call_num}/{total_calls}] track_narrative_rotation...", file=sys.stderr)
         intelligence["narrative_rotation"] = self.get_narrative_rotation()
+        intelligence["skills_called"].append("track_narrative_rotation")
         
-        # 4. Per-asset intelligence
-        print(f"[SkillHub] [4/4] Fetching per-asset intelligence for {len(target_assets)} assets...", file=sys.stderr)
-        for i, symbol in enumerate(target_assets):
-            if symbol in ("USDT", "USDC", "DAI", "FDUSD", "TUSD"):
-                # Skip stablecoins — no sentiment/holder analysis needed
+        # 5. Per-asset intelligence (5 skills per non-stablecoin asset)
+        for symbol in target_assets:
+            if symbol in ("USDT", "USDC", "DAI", "FDUSD", "TUSD", "USD1", "USDe", "USDD"):
                 intelligence["per_asset"][symbol] = {"type": "stablecoin", "skipped": True}
                 continue
-                
-            print(f"[SkillHub]   [{i+1}/{len(target_assets)}] {symbol}...", file=sys.stderr)
+            
             asset_intel = {}
             
-            # KOL Sentiment
+            # 5a. KOL Sentiment
+            call_num += 1
+            print(f"[SkillHub] [{call_num}/{total_calls}] altcoin_kol_sentiment({symbol})...", file=sys.stderr)
             asset_intel["kol_sentiment"] = self.get_kol_sentiment(symbol)
+            intelligence["skills_called"].append(f"altcoin_kol_sentiment:{symbol}")
             
-            # Funding rate (use BTC as proxy for overall derivatives market)
-            if symbol == "BNB" or i == 0:
-                asset_intel["funding_regime"] = self.get_funding_rate_regime(symbol)
+            # 5b. Funding rate regime (for ALL assets, not just first)
+            call_num += 1
+            print(f"[SkillHub] [{call_num}/{total_calls}] detect_funding_rate_regime_shift({symbol})...", file=sys.stderr)
+            asset_intel["funding_regime"] = self.get_funding_rate_regime(symbol)
+            intelligence["skills_called"].append(f"detect_funding_rate_regime_shift:{symbol}")
             
-            # Kline patterns
+            # 5c. Kline patterns
+            call_num += 1
+            print(f"[SkillHub] [{call_num}/{total_calls}] kline_pattern_recognition({symbol})...", file=sys.stderr)
             asset_intel["kline_patterns"] = self.get_kline_patterns(symbol)
+            intelligence["skills_called"].append(f"kline_pattern_recognition:{symbol}")
+            
+            # 5d. Holder concentration risk
+            call_num += 1
+            print(f"[SkillHub] [{call_num}/{total_calls}] score_holder_concentration_risk({symbol})...", file=sys.stderr)
+            asset_intel["holder_risk"] = self.get_holder_concentration(symbol)
+            intelligence["skills_called"].append(f"score_holder_concentration_risk:{symbol}")
+            
+            # 5e. Whale transfer anomalies
+            call_num += 1
+            print(f"[SkillHub] [{call_num}/{total_calls}] monitor_whale_transfer_anomalies({symbol})...", file=sys.stderr)
+            asset_intel["whale_activity"] = self.get_whale_anomalies(symbol)
+            intelligence["skills_called"].append(f"monitor_whale_transfer_anomalies:{symbol}")
             
             intelligence["per_asset"][symbol] = asset_intel
         
         print("[SkillHub] ═══════════════════════════════════════════════", file=sys.stderr)
-        print("[SkillHub] Intelligence gathering complete.", file=sys.stderr)
+        print(f"[SkillHub] Intelligence gathering complete. {len(intelligence['skills_called'])} skill calls made.", file=sys.stderr)
         print("[SkillHub] ═══════════════════════════════════════════════", file=sys.stderr)
         
         return intelligence
@@ -523,8 +560,18 @@ def summarize_intelligence_for_llm(intelligence: dict) -> str:
     """
     Convert the full intelligence gathering results into a concise
     text summary suitable for injection into the LLM compiler prompt.
+    Covers all 10 Skill Hub skills.
     """
     lines = []
+    
+    # Daily overview
+    daily = intelligence.get("daily_overview", {})
+    daily_data = daily.get("data", daily)
+    daily_report = daily_data.get("decision_report", daily_data.get("report", {}))
+    if daily_report.get("conclusion"):
+        lines.append("=== DAILY MARKET OVERVIEW (from daily_market_overview) ===")
+        lines.append(f"Summary: {daily_report['conclusion'][:300]}")
+        lines.append("")
     
     # Macro regime
     macro = intelligence.get("macro_regime", {})
@@ -534,7 +581,6 @@ def summarize_intelligence_for_llm(intelligence: dict) -> str:
     if macro_report.get("conclusion"):
         lines.append(f"Conclusion: {macro_report['conclusion']}")
     if macro_report.get("analysis"):
-        # Truncate to first 500 chars for prompt efficiency
         lines.append(f"Analysis: {macro_report['analysis'][:500]}")
     macro_guidance = macro_data.get("action_guidance", {})
     if macro_guidance.get("bias"):
@@ -575,13 +621,6 @@ def summarize_intelligence_for_llm(intelligence: dict) -> str:
         lines.append(f"KOL Sentiment: {kol_summary['conclusion'][:200]}")
         lines.append(f"  Confidence: {kol_summary['confidence']}, Bias: {kol_summary['bias']}")
         
-        # Kline patterns
-        kline = asset_data.get("kline_patterns", {})
-        kline_data = kline.get("data", kline)
-        kline_report = kline_data.get("decision_report", {})
-        if kline_report.get("conclusion"):
-            lines.append(f"Chart Patterns: {kline_report['conclusion'][:200]}")
-        
         # Funding regime
         funding = asset_data.get("funding_regime", {})
         funding_data = funding.get("data", funding)
@@ -589,7 +628,38 @@ def summarize_intelligence_for_llm(intelligence: dict) -> str:
         if funding_report.get("conclusion"):
             lines.append(f"Funding Regime: {funding_report['conclusion'][:200]}")
         
+        # Kline patterns
+        kline = asset_data.get("kline_patterns", {})
+        kline_data = kline.get("data", kline)
+        kline_report = kline_data.get("decision_report", {})
+        if kline_report.get("conclusion"):
+            lines.append(f"Chart Patterns: {kline_report['conclusion'][:200]}")
+        
+        # Holder concentration risk
+        holder = asset_data.get("holder_risk", {})
+        holder_data = holder.get("data", holder)
+        holder_report = holder_data.get("decision_report", holder_data.get("report", {}))
+        if holder_report.get("conclusion"):
+            lines.append(f"Holder Risk: {holder_report['conclusion'][:200]}")
+        elif holder_data.get("risk_score"):
+            lines.append(f"Holder Risk Score: {holder_data['risk_score']}")
+        
+        # Whale transfer anomalies
+        whale = asset_data.get("whale_activity", {})
+        whale_data = whale.get("data", whale)
+        whale_report = whale_data.get("decision_report", whale_data.get("report", {}))
+        if whale_report.get("conclusion"):
+            lines.append(f"Whale Activity: {whale_report['conclusion'][:200]}")
+        elif whale_data.get("anomaly_detected") is not None:
+            lines.append(f"Whale Anomaly Detected: {whale_data['anomaly_detected']}")
+        
         lines.append("")
+    
+    # Skills called summary
+    skills_called = intelligence.get("skills_called", [])
+    if skills_called:
+        unique_skills = set(s.split(":")[0] for s in skills_called)
+        lines.append(f"=== TOTAL: {len(skills_called)} skill calls across {len(unique_skills)} unique skills ===")
     
     return "\n".join(lines)
 

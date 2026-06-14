@@ -20,17 +20,18 @@
 
 ## What Is This?
 
-**Alpha Compiler** is a CMC Strategy Skill that turns a plain-English investment thesis into a machine-readable, backtestable trading strategy spec — complete with entry/exit rules, allocation weights, risk parameters, and a deployable PancakeSwap execution script.
+**Alpha Compiler** is a CMC Strategy Skill that turns a plain-English investment thesis into a machine-readable, backtestable trading strategy spec — complete with entry/exit rules, allocation weights, risk parameters, and versioned change tracking.
 
 It doesn't just template rules onto indicators. It **thinks**:
 
-1. **Gathers live intelligence** from the CMC Skill Hub MCP (macro regime, KOL sentiment, funding rates, chart patterns, narrative rotation)
+1. **Gathers live intelligence** — FAST layer: Core MCP (12 direct tools, ~5s) + DEEP layer: Skill Hub MCP (10 analytical skills, ~120s)
 2. **Classifies the market regime** using real institutional-grade data, not simple thresholds
-3. **Compiles a strategy spec** via structured LLM output, informed by the intelligence
+3. **Compiles a strategy spec** via structured LLM output, informed by BOTH intelligence layers
 4. **Backtests it** against real CMC price history with dynamic AMM slippage modeling
-5. **Exports everything**: JSON spec, interactive HTML report, PancakeSwap web3 swap script
+5. **Versions and publishes** — diffs every re-compilation, publishes to Greenfield/IPFS
+6. **Monitors for regime shifts** — re-compiles automatically when the market regime changes
 
-The input is a sentence. The output is a quantitative trading system.
+The input is a sentence. The output is an institution-grade, verifiable strategy spec.
 
 ---
 
@@ -40,29 +41,38 @@ The input is a sentence. The output is a quantitative trading system.
 ┌─────────────────────┐
 │  "Rotate into       │
 │   stablecoins when  │     ┌──────────────────────────────────┐
-│   fear is high"     │────▶│  1. CMC Skill Hub MCP            │
-│                     │     │     • crypto_macro_overview       │
-│  + target assets    │     │     • altcoin_kol_sentiment       │
-│  + risk tolerance   │     │     • monitor_market_sentiment    │
-└─────────────────────┘     │     • kline_pattern_recognition   │
+│   fear is high"     │────▶│  1a. Core MCP (FAST, ~5s)        │
+│                     │     │     • get_global_metrics_latest   │
+│  + target assets    │     │     • get_crypto_technical_analysis│
+│  + risk tolerance   │     │     • get_crypto_latest_news      │
+└─────────────────────┘     │     • trending_crypto_narratives  │
+                            │     • get_upcoming_macro_events   │
+                            └───────────────┬──────────────────┘
+                                            │
+                            ┌──────────────────────────────────┐
+                            │  1b. Skill Hub MCP (DEEP, ~120s) │
+                            │     • crypto_macro_overview       │
+                            │     • altcoin_kol_sentiment       │
+                            │     • monitor_market_sentiment    │
+                            │     • kline_pattern_recognition   │
                             │     • track_narrative_rotation    │
                             └───────────────┬──────────────────┘
                                             │
                                             ▼
                             ┌──────────────────────────────────┐
                             │  2. Strategy Compiler (GPT-4o)   │
-                            │     Thesis + Live Intelligence   │
+                            │     Thesis + BOTH MCP layers     │
                             │     → StrategySpec JSON          │
                             └───────────────┬──────────────────┘
                                             │
                       ┌─────────────────────┼─────────────────────┐
                       ▼                     ▼                     ▼
             ┌──────────────┐    ┌───────────────────┐   ┌─────────────────┐
-            │ strategy.json│    │ backtest_report    │   │ execute_strategy│
-            │              │    │ .html              │   │ .py             │
-            │ Machine-     │    │ Interactive        │   │ PancakeSwap     │
-            │ readable     │    │ Chart.js           │   │ web3.py swaps   │
-            │ spec         │    │ dashboard          │   │ on BSC          │
+            │ strategy.json│    │ backtest_report    │   │ changelog.json  │
+            │              │    │ .html              │   │                 │
+            │ Machine-     │    │ Interactive        │   │ Versioned Diff  │
+            │ Readable     │    │ Performance        │   │ of Strategy     │
+            │ Strategy Spec│    │ Dashboard          │   │ Changes         │
             └──────────────┘    └───────────────────┘   └─────────────────┘
 ```
 
@@ -73,18 +83,21 @@ The input is a sentence. The output is a quantitative trading system.
 ```
 alpha-compiler/
 ├── skill_engine/
-│   ├── compiler.py          # Core: thesis → strategy spec compiler
-│   ├── skill_hub_client.py  # CMC Skill Hub MCP client (Streamable HTTP)
-│   ├── exporter.py          # PancakeSwap web3 execution script generator
+│   ├── compiler.py          # Core: thesis → strategy spec compiler (uses BOTH MCP layers)
+│   ├── skill_hub_client.py  # CMC Skill Hub MCP client (10 analytical skills, DEEP layer)
+│   ├── cmc_mcp_client.py    # CMC Core MCP client (12 direct tools, FAST layer)
+│   ├── monitor.py           # Regime monitor — detects shifts, triggers re-compilation
+│   ├── publisher.py         # Strategy versioning, diffs, IPFS + BNB Greenfield publishing
 │   ├── agent_core.py        # BNB AI Agent SDK: ERC-8004 identity + ERC-8183 escrow
-│   └── constants.py         # 149 allowed BEP-20 tokens
+│   ├── server.py            # FastAPI agent server (ERC-8183 job intake + settlement)
+│   └── constants.py         # 147 allowed BEP-20 tokens
 ├── backtest_sandbox/
 │   └── engine.py            # VectorBT backtester + HTML report generator
 ├── skills/
 │   ├── runner.py            # MCP server (FastMCP) — exposes the skill as a tool
-│   └── regime_rotator.json  # Skill schema definition
+│   └── regime_rotator.json  # Skill schema definition (v3.0.0)
 ├── tests/
-│   └── test_unit.py         # 26 pytest tests (spec validation, slippage, extractors)
+│   └── test_unit.py         # 29 pytest tests
 ├── test_e2e_runner.py       # End-to-end validation
 └── requirements.txt
 ```
@@ -93,46 +106,81 @@ alpha-compiler/
 
 | Layer | Component | How We Use It |
 |-------|-----------|---------------|
-| **L1 · Data & Signal** | CMC Skill Hub MCP | `find_skill` + `execute_skill` via Streamable HTTP — 5 core skills called per compilation |
+| **L1 · Data & Signal** | CMC Skill Hub MCP | `find_skill` + `execute_skill` via Streamable HTTP — **10 skills** called per compilation |
+| **L1 · Data & Signal** | CMC Core MCP | **12 direct tools** — `search_cryptos`, quotes, TA, derivatives, news, global metrics, narratives, macro events |
+| **L1 · Data & Signal** | CMC x402 | Autonomous pay-per-request mode ($0.01 USDC/call on Base) — no API key needed |
 | **L1 · Data & Signal** | CMC Data API | REST fallback for historical price charts and token mappings |
-| **L3 · Chain & SDK** | BNB AI Agent SDK | ERC-8004 on-chain agent identity + ERC-8183 escrow settlement |
-| **L3 · Chain & SDK** | PancakeSwap V2 | Generated `web3.py` execution script for BSC swaps |
+| **L3 · Chain & SDK** | ERC-8004 Identity | On-chain agent registry — cryptographic provenance for every compiled spec |
+| **L3 · Chain & SDK** | ERC-8183 Escrow | Autonomous job settlement — escrow-funded research lifecycle |
+| **L3 · Chain & SDK** | BNB Greenfield | Decentralized storage — strategy specs + reports hosted on-chain |
+| **L3 · Chain & SDK** | FastAPI Server | Agent service daemon — accepts escrow jobs, compiles, publishes, settles |
 
 ---
 
 ## CMC Skill Hub MCP Integration
 
-This is the core differentiator. We don't just call a REST API — we connect to the **CMC Skill Hub MCP** at `https://mcp.coinmarketcap.com/skill-hub/stream` via Streamable HTTP and invoke **cloud-executed analytical pipelines** that return structured evidence packs.
+This is the core differentiator. We don't just call a REST API — we connect to **three CMC MCP endpoints** via Streamable HTTP:
 
-### Skills Used Per Compilation
+| Endpoint | Tools | Purpose |
+|----------|-------|---------|
+| `/skill-hub/stream` | `find_skill` + `execute_skill` | 10 cloud-executed analytical pipelines returning structured evidence packs |
+| `/mcp` | 12 direct tools | Real-time quotes, TA, derivatives, news, global metrics, narratives |
+| `/x402/mcp` | Same 12, keyless | Autonomous agent payments — $0.01 USDC per call on Base |
+
+### Skill Hub Skills (10 per compilation)
 
 | Skill | What It Gives Us | Why It Matters |
 |-------|-----------------|----------------|
-| `crypto_macro_overview` | Full macro regime read with confirmation/invalidation triggers | Replaces naive Fear & Greed thresholding |
+| `daily_market_overview` | Morning brief with regime read and key events | Sets the context before deep analysis |
+| `crypto_macro_overview` | Full macro regime with confirmation/invalidation triggers | Replaces naive Fear & Greed thresholding |
 | `monitor_market_sentiment_shift` | Sentiment regime, funding rates, F&G delta, leverage state | Multi-lane sentiment, not a single number |
 | `altcoin_kol_sentiment` | Real KOL positioning per asset — crowd vs. signal accounts | Real social intelligence, not a proxy |
 | `kline_pattern_recognition` | Candlestick patterns, S/R levels, structural formations | Professional chart reading per asset |
 | `track_narrative_rotation` | Leading/weakening market narratives and rotation state | What themes are driving flow |
+| `detect_funding_rate_regime_shift` | Funding rate regime detection per asset | Leverage stress and liquidation risk |
+| `score_holder_concentration_risk` | Holder distribution risk scoring | Whale concentration and rug-pull risk |
+| `monitor_whale_transfer_anomalies` | Large transfer anomaly detection | Smart money flow signals |
+| `assess_altcoin_asset_structure` | Full asset structure (security, emissions, holders) | Fundamental quality filter |
+
+### Core MCP Tools (12 direct data calls)
+
+| Tool | What It Returns |
+|------|-----------------|
+| `search_cryptos` | Resolve symbols to CMC IDs |
+| `get_crypto_quotes_latest` | Real-time price, market cap, volume, % changes |
+| `get_crypto_technical_analysis` | SMA, EMA, MACD, RSI, Fibonacci from CMC |
+| `get_crypto_latest_news` | Recent headlines per asset |
+| `get_global_metrics_latest` | Total market cap, BTC dominance, Fear & Greed |
+| `trending_crypto_narratives` | Hot trends and associated tokens |
+| `get_global_crypto_derivatives_metrics` | OI, funding rates, liquidations |
+| `get_upcoming_macro_events` | Upcoming economic events |
+| `get_crypto_info` | Token metadata, links, contract addresses |
+| `get_crypto_metrics` | Whale vs retail distribution |
+| `get_crypto_marketcap_technical_analysis` | Overall market cap technical indicators |
+| `search_crypto_info` | Semantic search for crypto concepts |
 
 ### How The Data Flows
 
 ```python
-# 1. Initialize the MCP client (Streamable HTTP, not legacy SSE)
-client = SkillHubClient(api_key="...")
-client.initialize()
+# 1. Initialize BOTH MCP clients
+core = CoreMCPClient(api_key="...")  # 12 direct tools at /mcp
+skill = SkillHubClient(api_key="...")  # 10 analytical skills at /skill-hub/stream
+core.initialize()
+skill.initialize()
 
-# 2. Gather all intelligence needed for compilation
-intelligence = client.gather_compilation_intelligence(["CAKE", "FLOKI"])
-# → Calls 5+ skills, aggregates results into structured dict
+# 2. Gather structured data (fast, direct)
+core_intel = core.gather_core_intelligence(["CAKE", "FLOKI"])
+# → Quotes, TA, derivatives, news, global metrics in ~5s
 
-# 3. Summarize for the LLM compiler
-summary = summarize_intelligence_for_llm(intelligence)
-# → Produces text like:
-#    "Macro Regime: neutral_chop_with_crowded_funding
-#     Fear & Greed: 20.0 (fear), 7d delta: -26.0
-#     CAKE KOL Sentiment: mixed, thin higher-signal coverage..."
+# 3. Gather deep analytical evidence packs (rich, slower)
+skill_intel = skill.gather_compilation_intelligence(["CAKE", "FLOKI"])
+# → 10 skills × macro + per-asset = ~14 calls in ~120s
 
-# 4. Feed to GPT-4o structured output with the thesis
+# 4. Merge both into the LLM compiler prompt
+summary = summarize_core_intelligence_for_llm(core_intel)
+summary += summarize_intelligence_for_llm(skill_intel)
+
+# 5. Feed to GPT-4o structured output with the thesis
 spec = openai.parse(thesis + summary, response_format=StrategySpec)
 ```
 
@@ -293,13 +341,14 @@ Sentiment:          Fear & Greed at 20, but funding says crowd is long
 
 ## Deliverables Per Run
 
-Every compilation produces **three deliverables**:
+Every compilation produces **four deliverables**:
 
 | File | Format | Description |
 |------|--------|-------------|
-| `strategy_v1.json` | JSON | Machine-readable strategy spec with allocations, entry/exit rules, and Skill Hub intelligence summary |
+| `strategy_v1.json` | JSON | Machine-readable strategy spec with allocations, entry/exit rules, and intelligence summary from both MCP layers |
 | `backtest_report.html` | HTML | Interactive dark-themed dashboard with Chart.js performance curves, allocation table, and Skill Hub intelligence panel |
-| `execute_strategy.py` | Python | Deployable PancakeSwap V2 swap script using `web3.py` — evaluates live signals and executes on-chain |
+| `strategy_changelog.json` | JSON | Version history with diffs — tracks regime shifts, weight rebalances, and asset changes across compilations |
+| `monitor_state.json` | JSON | Last recorded regime state for the regime monitor (enables shift detection) |
 
 ---
 
@@ -310,7 +359,7 @@ Every compilation produces **three deliverables**:
 - Python 3.10+
 - [CMC API Key](https://pro.coinmarketcap.com/) (free tier works)
 - [OpenAI API Key](https://platform.openai.com/)
-- BSC Private Key (optional, for on-chain execution)
+- BSC Private Key (optional, for ERC-8004 identity registration and ERC-8183 escrow settlement)
 
 ### Install
 
@@ -329,7 +378,7 @@ cp .env.example .env
 # Edit .env with your keys:
 #   CMC_API_KEY=your_coinmarketcap_api_key
 #   OPENAI_API_KEY=your_openai_key
-#   BSC_PRIVATE_KEY=your_bsc_private_key (optional)
+#   BSC_PRIVATE_KEY=your_bsc_private_key (optional, for on-chain identity + escrow)
 ```
 
 ### Run
@@ -348,12 +397,27 @@ python -m skill_engine.compiler \
 python -m skills.runner --transport stdio
 ```
 
-**E2E test:**
+**E2E test (compile + backtest + publish):**
 ```bash
 python test_e2e_runner.py
 ```
 
-**Unit tests (26 tests):**
+**Regime monitor (Architecture C — Living Strategy):**
+```bash
+# Single check — detect regime shift and re-compile if needed
+python -m skill_engine.monitor \
+  --thesis "Rotate into stablecoins when fear is extreme" \
+  --assets CAKE,FLOKI \
+  --check-once
+
+# Continuous monitoring (every 4 hours)
+python -m skill_engine.monitor \
+  --thesis "Rotate into stablecoins when fear is extreme" \
+  --assets CAKE,FLOKI \
+  --interval 14400
+```
+
+**Unit tests (29 tests):**
 ```bash
 python -m pytest tests/ -v
 ```
@@ -374,7 +438,26 @@ Most hackathon submissions either (a) hardcode rules onto indicators, or (b) wra
 
 4. **Models real market friction** — dynamic AMM slippage using constant-product formula approximation + volatility spread + BSC gas costs. Not a flat fee.
 
-5. **Ships three production artifacts** — strategy JSON, interactive HTML report with Skill Hub intelligence panel, and a deployable PancakeSwap swap script.
+5. **Operates as an autonomous economic agent on-chain** — ERC-8004 identity signs every compiled spec for verifiable provenance. ERC-8183 escrow automates the "quant-for-hire" commercial model: client deposits, agent compiles, proof settles on-chain.
+
+---
+
+## 💰 The "Quant-for-Hire" On-Chain Commercial Model
+
+Alpha Compiler isn't just a script — it's an **autonomous research agent** with a native on-chain monetization path:
+
+**ERC-8004 · Verifiable Agent Identity**
+- Every generated strategy file is cryptographically signed by the compiler's on-chain identity
+- Ensures verifiable lineage — judges (or clients) can confirm *which agent* produced *which spec*
+- Prevents backtest forgery: the spec hash is anchored to the agent's registry
+
+**ERC-8183 · Agentic Escrow Settlement**  
+- A client deposits funds into the escrow contract with a research brief (thesis + target assets)
+- Alpha Compiler consumes the event, compiles the strategy, runs the backtest
+- The cryptographic proof of the completed spec is anchored on-chain
+- Escrow unlocks compensation to the agent — fully autonomous, no intermediary
+
+This turns the strategy skill into a **decentralized quant research firm**: permissionless, verifiable, and natively monetized on BNB Chain.
 
 ---
 
@@ -382,12 +465,15 @@ Most hackathon submissions either (a) hardcode rules onto indicators, or (b) wra
 
 | Component | Technology |
 |-----------|-----------|
-| Skill Hub MCP | Streamable HTTP client → `find_skill` + `execute_skill` |
+| Core MCP (FAST) | Streamable HTTP client → 12 direct tools at `/mcp` |
+| Skill Hub MCP (DEEP) | Streamable HTTP client → `find_skill` + `execute_skill` at `/skill-hub/stream` |
 | Data API | CoinMarketCap REST (historical charts, quotes, token mappings) |
 | Strategy Compiler | OpenAI GPT-4o structured output |
 | Backtester | VectorBT with dynamic slippage model |
-| On-chain Identity | BNB AI Agent SDK (ERC-8004 + ERC-8183) |
-| Execution | PancakeSwap V2 Router via `web3.py` |
+| Regime Monitor | Polling loop with shift detection and automatic re-compilation |
+| Publisher | Strategy versioning, diffs, Greenfield/IPFS publishing |
+| On-chain Identity | BNB AI Agent SDK — ERC-8004 agent registry |
+| Settlement | ERC-8183 agentic escrow — autonomous job settlement on BSC |
 | MCP Server | FastMCP (stdio/SSE transport) |
 | Reporting | Chart.js + custom dark-themed HTML |
 
@@ -397,10 +483,10 @@ Most hackathon submissions either (a) hardcode rules onto indicators, or (b) wra
 
 | Criteria | How We Address It |
 |----------|-------------------|
-| **Technical execution** | Full pipeline from NL thesis → Skill Hub intelligence → structured LLM compilation → VectorBT backtest → PancakeSwap execution script |
-| **Originality** | First skill that feeds live Skill Hub evidence packs into strategy compilation. Not just calling an API — using `find_skill` + `execute_skill` as the intelligence layer |
-| **Real-world relevance** | Any trader can write a thesis in English and get a backtested, deployable strategy. Stablecoin rotation during bearish regimes demonstrably reduces drawdown |
-| **Demo and presentation** | Interactive HTML reports with Chart.js, Skill Hub intelligence panel, per-asset return curves |
+| **Technical execution** | Full pipeline: NL thesis → Core MCP (12 tools) + Skill Hub MCP (10 skills) → structured LLM compilation → VectorBT backtest → version tracking + Greenfield publishing. Regime monitor for living strategies |
+| **Originality** | First skill that fuses BOTH CMC MCP endpoints (Core + Skill Hub) into a dual-layer intelligence pipeline. Regime monitor turns static specs into living strategies |
+| **Real-world relevance** | Any trader writes a thesis in English, gets a backtested strategy spec with diffs. Stablecoin rotation during bearish regimes demonstrably reduces drawdown |
+| **Demo and presentation** | Interactive HTML reports with Chart.js, Skill Hub intelligence panel, per-asset return curves. Versioned diffs show strategy evolution |
 
 ---
 
@@ -414,5 +500,5 @@ MIT
   Built for <strong>BNB Hack: AI Trading Agent Edition 2026</strong><br>
   Track 2: Strategy Skills<br>
   <br>
-  Powered by CoinMarketCap Skill Hub MCP · BNB AI Agent SDK · VectorBT
+  Powered by CoinMarketCap Core MCP · Skill Hub MCP · BNB AI Agent SDK · VectorBT
 </p>

@@ -1,7 +1,8 @@
 """
-Strategy Publisher — Versioning, Diffing, and IPFS Publishing.
+Strategy Publisher — Versioning, Diffing, IPFS + BNB Greenfield Publishing.
 
-Tracks strategy iterations with structured diffs and optional IPFS pinning.
+Tracks strategy iterations with structured diffs and publishes deliverables
+to IPFS (Pinata) and/or BNB Greenfield decentralized storage.
 """
 import os
 import json
@@ -247,9 +248,108 @@ if __name__ == "__main__":
         entry = record_strategy_version(strategy)
         print(json.dumps(entry, indent=2))
         
-        # Try IPFS publish
-        cid = publish_to_ipfs(strategy)
-        if cid:
-            print(f"IPFS CID: {cid}")
+        # Try Greenfield first, fall back to IPFS
+        gf_url = publish_to_greenfield(strategy)
+        if not gf_url:
+            cid = publish_to_ipfs(strategy)
+            if cid:
+                print(f"IPFS CID: {cid}")
     else:
         print("No strategy_v1.json found. Run the compiler first.")
+
+
+def publish_to_greenfield(
+    strategy: dict,
+    report_html_path: str = "backtest_report.html",
+    bucket_name: str = None,
+) -> Optional[str]:
+    """
+    Publish strategy and report to BNB Greenfield decentralized storage.
+    Uses the bnbagent[storage] SDK module.
+    
+    Requires GREENFIELD_PRIVATE_KEY environment variable.
+    Optional: GREENFIELD_BUCKET (defaults to 'alpha-compiler-deliverables').
+    
+    Returns the Greenfield object URL or None if publishing fails.
+    """
+    private_key = os.environ.get("GREENFIELD_PRIVATE_KEY") or os.environ.get("BSC_PRIVATE_KEY")
+    if not private_key:
+        print("[Publisher] Greenfield publishing skipped: GREENFIELD_PRIVATE_KEY not set.")
+        return None
+    
+    bucket = bucket_name or os.environ.get("GREENFIELD_BUCKET", "alpha-compiler-deliverables")
+    strategy_hash = compute_strategy_hash(strategy)
+    
+    try:
+        from bnbagent.storage import GreenfieldClient
+        
+        gf = GreenfieldClient(private_key=private_key, network="testnet")
+        
+        # Ensure bucket exists
+        try:
+            gf.create_bucket(bucket)
+            print(f"[Publisher] Created Greenfield bucket: {bucket}")
+        except Exception:
+            pass  # Bucket may already exist
+        
+        # Upload strategy JSON
+        strategy_payload = json.dumps(strategy, indent=2).encode("utf-8")
+        strategy_key = f"strategy_{strategy_hash}.json"
+        gf.put_object(
+            bucket_name=bucket,
+            object_name=strategy_key,
+            data=strategy_payload,
+            content_type="application/json",
+        )
+        strategy_url = f"https://greenfield-sp.bnbchain.org/view/{bucket}/{strategy_key}"
+        print(f"[Publisher] Strategy uploaded to Greenfield: {strategy_url}")
+        
+        # Upload backtest report if exists
+        report_url = None
+        if os.path.exists(report_html_path):
+            with open(report_html_path, "rb") as f:
+                report_data = f.read()
+            report_key = f"report_{strategy_hash}.html"
+            gf.put_object(
+                bucket_name=bucket,
+                object_name=report_key,
+                data=report_data,
+                content_type="text/html",
+            )
+            report_url = f"https://greenfield-sp.bnbchain.org/view/{bucket}/{report_key}"
+            print(f"[Publisher] Report uploaded to Greenfield: {report_url}")
+        
+        print(f"[Publisher] Greenfield publishing complete.")
+        return strategy_url
+        
+    except ImportError:
+        print("[Publisher] Greenfield publishing skipped: bnbagent[storage] not installed.")
+        print("[Publisher] Install with: pip install bnbagent[storage]")
+        return None
+    except Exception as e:
+        print(f"[Publisher] Greenfield publishing failed: {e}")
+        return None
+
+
+def publish_deliverables(strategy: dict, report_html_path: str = "backtest_report.html") -> dict:
+    """
+    Publish strategy deliverables to available storage backends.
+    Tries Greenfield first, falls back to IPFS/Pinata.
+    Returns a dict with URLs for each successfully published backend.
+    """
+    result = {"greenfield": None, "ipfs": None}
+    
+    # Try Greenfield first
+    gf_url = publish_to_greenfield(strategy, report_html_path)
+    if gf_url:
+        result["greenfield"] = gf_url
+    
+    # Also try IPFS (complementary, not fallback)
+    ipfs_cid = publish_to_ipfs(strategy, report_html_path)
+    if ipfs_cid:
+        result["ipfs"] = f"https://gateway.pinata.cloud/ipfs/{ipfs_cid}"
+    
+    if not result["greenfield"] and not result["ipfs"]:
+        print("[Publisher] No storage backends available. Deliverables saved locally only.")
+    
+    return result

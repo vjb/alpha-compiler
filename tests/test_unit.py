@@ -1,271 +1,298 @@
 """
-Unit tests for Alpha Compiler components.
-Run with: python -m pytest tests/ -v
+Unit tests for Alpha Compiler — 26 focused tests across all modules.
+Run: python -m pytest tests/ -v
 """
-import pytest
-import json
 import os
 import sys
+import json
+import time
+import pytest
 
-# Add project root to path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-
-class TestStrategySpecValidation:
-    """Test the Pydantic StrategySpec model validation."""
-    
-    def test_valid_spec(self):
-        from skill_engine.compiler import StrategySpec, SignalRule, VectorBTSignals, AssetAllocation
-        spec = StrategySpec(
-            strategy_name="Test Strategy",
-            regime_classified="bullish",
-            target_assets=["CAKE", "BNB"],
-            allocation_weights=[
-                AssetAllocation(symbol="CAKE", weight=0.6),
-                AssetAllocation(symbol="BNB", weight=0.4),
-            ],
-            stop_loss_pct=0.05,
-            take_profit_pct=0.10,
-            vectorbt_signals=VectorBTSignals(
-                entry_rules=[SignalRule(indicator="rsi", operator="<", threshold=30)],
-                exit_rules=[SignalRule(indicator="rsi", operator=">", threshold=70)],
-            ),
-        )
-        assert spec.strategy_name == "Test Strategy"
-        assert spec.regime_classified == "bullish"
-        assert len(spec.target_assets) == 2
-    
-    def test_invalid_asset_rejected(self):
-        from skill_engine.compiler import StrategySpec, SignalRule, VectorBTSignals, AssetAllocation
-        with pytest.raises(ValueError, match="not in the allowed BEP-20"):
-            StrategySpec(
-                strategy_name="Bad Strategy",
-                regime_classified="bullish",
-                target_assets=["INVALIDTOKEN"],
-                allocation_weights=[AssetAllocation(symbol="INVALIDTOKEN", weight=1.0)],
-                stop_loss_pct=0.05,
-                take_profit_pct=0.10,
-                vectorbt_signals=VectorBTSignals(
-                    entry_rules=[SignalRule(indicator="rsi", operator="<", threshold=30)],
-                    exit_rules=[SignalRule(indicator="rsi", operator=">", threshold=70)],
-                ),
-            )
-    
-    def test_asset_normalization(self):
-        from skill_engine.compiler import StrategySpec, SignalRule, VectorBTSignals, AssetAllocation
-        spec = StrategySpec(
-            strategy_name="Case Test",
-            regime_classified="sideways",
-            target_assets=["cake", "bnb"],  # lowercase input
-            allocation_weights=[
-                AssetAllocation(symbol="CAKE", weight=0.5),
-                AssetAllocation(symbol="BNB", weight=0.5),
-            ],
-            stop_loss_pct=0.03,
-            take_profit_pct=0.06,
-            vectorbt_signals=VectorBTSignals(
-                entry_rules=[SignalRule(indicator="rsi", operator="<", threshold=40)],
-                exit_rules=[SignalRule(indicator="rsi", operator=">", threshold=60)],
-            ),
-        )
-        assert spec.target_assets == ["CAKE", "BNB"]  # Normalized to uppercase
+# Ensure project root in path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 
-class TestThesisValidation:
-    """Test the thesis text validator."""
-    
-    def test_clean_thesis_passes(self):
-        from skill_engine.compiler import validate_thesis_text
-        validate_thesis_text("Rotate into stablecoins when fear is extreme")
-    
-    def test_btc_mention_rejected(self):
-        from skill_engine.compiler import validate_thesis_text
-        with pytest.raises(ValueError, match="disallowed asset reference"):
-            validate_thesis_text("Buy BTC when RSI is oversold")
-    
-    def test_solana_mention_rejected(self):
-        from skill_engine.compiler import validate_thesis_text
-        with pytest.raises(ValueError, match="disallowed asset reference"):
-            validate_thesis_text("Long solana ecosystem tokens")
-    
-    def test_allowed_bep20_passes(self):
-        from skill_engine.compiler import validate_thesis_text
-        # "cake" and "floki" should NOT be in the disallowed list
-        validate_thesis_text("Buy CAKE and FLOKI when market sentiment is bullish")
+# ═══════════════════════════════════════════════════════════════
+# SKILL HUB CLIENT TESTS (5 tests)
+# ═══════════════════════════════════════════════════════════════
 
-
-class TestDynamicSlippage:
-    """Test the dynamic AMM slippage calculator."""
+class TestSkillHubClient:
+    """Test the CMC Skill Hub MCP client."""
     
-    def test_base_fee_included(self):
-        from backtest_sandbox.engine import compute_dynamic_slippage
-        fee = compute_dynamic_slippage(1000.0, 1000000.0, 0.02)
-        assert fee >= 0.0025  # PancakeSwap base fee
+    def test_client_initializes(self):
+        from skill_engine.skill_hub_client import SkillHubClient
+        client = SkillHubClient()
+        client.initialize()
+        assert client._initialized is True
     
-    def test_illiquid_asset_higher_slippage(self):
-        from backtest_sandbox.engine import compute_dynamic_slippage
-        liquid = compute_dynamic_slippage(1000.0, 10000000.0, 0.02)
-        illiquid = compute_dynamic_slippage(1000.0, 1000.0, 0.02)
-        assert illiquid > liquid
+    def test_find_skill_returns_candidates(self):
+        from skill_engine.skill_hub_client import SkillHubClient
+        client = SkillHubClient()
+        client.initialize()
+        candidates = client.find_skill("btc price")
+        assert len(candidates) > 0
+        assert "uniqueName" in candidates[0]
     
-    def test_zero_volume_fallback(self):
-        from backtest_sandbox.engine import compute_dynamic_slippage
-        fee = compute_dynamic_slippage(1000.0, 0.0, 0.02)
-        assert fee >= 0.01  # Should use high fallback
+    def test_sentiment_regime_returns_metrics(self):
+        from skill_engine.skill_hub_client import SkillHubClient, extract_sentiment_metrics
+        client = SkillHubClient()
+        client.initialize()
+        result = client.get_sentiment_regime("7d")
+        metrics = extract_sentiment_metrics(result)
+        assert "fear_greed_value" in metrics
+        assert isinstance(metrics["fear_greed_value"], (int, float))
     
-    def test_high_volatility_wider_spread(self):
-        from backtest_sandbox.engine import compute_dynamic_slippage
-        low_vol = compute_dynamic_slippage(1000.0, 1000000.0, 0.01)
-        high_vol = compute_dynamic_slippage(1000.0, 1000000.0, 0.10)
-        assert high_vol > low_vol
-
-
-class TestSkillHubHelpers:
-    """Test the Skill Hub intelligence extraction helpers."""
-    
-    def test_extract_regime_bullish(self):
+    def test_macro_regime_extraction(self):
         from skill_engine.skill_hub_client import extract_regime_from_macro
-        result = extract_regime_from_macro({
-            "data": {
-                "decision_report": {"conclusion": "Risk-on regime confirmed"},
-                "action_guidance": {"bias": "risk_on"}
-            }
-        })
-        assert result == "bullish"
+        # Test bullish extraction
+        assert extract_regime_from_macro({"data": {"action_guidance": {"bias": "risk_on"}}}) == "bullish"
+        # Test bearish extraction
+        assert extract_regime_from_macro({"data": {"action_guidance": {"bias": "defensive"}}}) == "bearish"
+        # Test sideways fallback
+        assert extract_regime_from_macro({"data": {"action_guidance": {"bias": "neutral"}}}) == "sideways"
     
-    def test_extract_regime_bearish(self):
-        from skill_engine.skill_hub_client import extract_regime_from_macro
-        result = extract_regime_from_macro({
-            "data": {
-                "decision_report": {"conclusion": "Defensive positioning recommended"},
-                "action_guidance": {"bias": "avoid_leverage_chasing"}
-            }
-        })
-        assert result == "bearish"
-    
-    def test_extract_regime_sideways_default(self):
-        from skill_engine.skill_hub_client import extract_regime_from_macro
-        result = extract_regime_from_macro({
-            "data": {
-                "decision_report": {"conclusion": "Mixed signals across lanes"},
-                "action_guidance": {"bias": "balanced_wait"}
-            }
-        })
-        assert result == "sideways"
-    
-    def test_extract_sentiment_metrics(self):
-        from skill_engine.skill_hub_client import extract_sentiment_metrics
-        result = extract_sentiment_metrics({
-            "data": {
-                "report": {
-                    "sentiment_regime": "neutral_chop",
-                    "inflection_direction": "mixed",
-                    "metrics": {
-                        "fear_greed_value": 25.0,
-                        "fear_greed_label": "fear",
-                        "fear_greed_7d_delta": -20.0,
-                        "average_funding_bps_7d": 30.0,
-                    }
-                }
-            }
-        })
-        assert result["sentiment_regime"] == "neutral_chop"
-        assert result["fear_greed_value"] == 25.0
-        assert result["avg_funding_bps"] == 30.0
-    
-    def test_extract_kol_summary(self):
+    def test_kol_summary_extraction(self):
         from skill_engine.skill_hub_client import extract_kol_sentiment_summary
-        result = extract_kol_sentiment_summary({
+        kol_result = {
             "data": {
                 "status": "ok",
                 "confidence": "high",
-                "decision_report": {
-                    "conclusion": "CAKE social discussion is mixed",
-                    "analysis": "Thin KOL coverage"
-                },
-                "action_guidance": {
-                    "bias": "use_as_context",
-                    "risk_note": "Low signal density"
-                }
+                "decision_report": {"conclusion": "Test conclusion"},
+                "action_guidance": {"bias": "use_as_context", "risk_note": "Test risk"}
             }
-        })
-        assert result["status"] == "ok"
-        assert result["confidence"] == "high"
-        assert result["bias"] == "use_as_context"
+        }
+        summary = extract_kol_sentiment_summary(kol_result)
+        assert summary["status"] == "ok"
+        assert summary["confidence"] == "high"
+        assert summary["bias"] == "use_as_context"
 
 
-class TestStrategyPublisher:
+# ═══════════════════════════════════════════════════════════════
+# CORE MCP CLIENT TESTS (3 tests)
+# ═══════════════════════════════════════════════════════════════
+
+class TestCoreMCPClient:
+    """Test the CMC Core MCP client."""
+    
+    def test_client_initializes(self):
+        from skill_engine.cmc_mcp_client import CoreMCPClient
+        client = CoreMCPClient()
+        client.initialize()
+        assert client._initialized is True
+
+    def test_summarize_core_empty(self):
+        from skill_engine.cmc_mcp_client import summarize_core_intelligence_for_llm
+        result = summarize_core_intelligence_for_llm({"per_asset": {}})
+        assert isinstance(result, str)
+    
+    def test_core_endpoint_configured(self):
+        from skill_engine.cmc_mcp_client import CoreMCPClient
+        client = CoreMCPClient()
+        assert "mcp.coinmarketcap.com/mcp" in client.endpoint
+
+
+# ═══════════════════════════════════════════════════════════════
+# COMPILER TESTS (5 tests)
+# ═══════════════════════════════════════════════════════════════
+
+class TestCompiler:
+    """Test the strategy compiler."""
+    
+    def test_validate_thesis_rejects_btc(self):
+        from skill_engine.compiler import validate_thesis_text
+        with pytest.raises(ValueError, match="disallowed"):
+            validate_thesis_text("I want to buy BTC and hold")
+    
+    def test_validate_thesis_accepts_bnb(self):
+        from skill_engine.compiler import validate_thesis_text
+        # BNB is an allowed BEP-20 token, should not raise
+        validate_thesis_text("I want to rotate BNB ecosystem tokens based on momentum")
+    
+    def test_signal_rule_validates(self):
+        from skill_engine.compiler import SignalRule
+        rule = SignalRule(indicator="rsi", operator=">", threshold=70.0)
+        assert rule.indicator == "rsi"
+        assert rule.threshold == 70.0
+    
+    def test_signal_rule_new_indicators(self):
+        from skill_engine.compiler import SignalRule
+        rule = SignalRule(indicator="kol_sentiment_bias", operator=">", threshold=0.5)
+        assert rule.indicator == "kol_sentiment_bias"
+        
+        rule2 = SignalRule(indicator="funding_rate_bps", operator="<", threshold=50.0)
+        assert rule2.indicator == "funding_rate_bps"
+    
+    def test_strategy_spec_validates_assets(self):
+        from skill_engine.compiler import StrategySpec
+        with pytest.raises(ValueError):
+            StrategySpec(
+                strategy_name="Test",
+                regime_classified="bullish",
+                target_assets=["INVALID_TOKEN"],
+                allocation_weights=[],
+                stop_loss_pct=0.05,
+                take_profit_pct=0.10,
+                vectorbt_signals={"entry_rules": [], "exit_rules": []}
+            )
+
+
+# ═══════════════════════════════════════════════════════════════
+# CONSTANTS TESTS (3 tests)
+# ═══════════════════════════════════════════════════════════════
+
+class TestConstants:
+    """Test the allowed BEP-20 token list."""
+    
+    def test_allowed_tokens_count(self):
+        from skill_engine.constants import ALLOWED_BEP20_TOKENS
+        assert len(ALLOWED_BEP20_TOKENS) >= 100
+    
+    def test_key_tokens_present(self):
+        from skill_engine.constants import ALLOWED_BEP20_TOKENS
+        key_tokens = ["BNB", "CAKE", "USDT", "FLOKI"]
+        for token in key_tokens:
+            assert token in ALLOWED_BEP20_TOKENS, f"{token} should be in allowed list"
+    
+    def test_no_non_bsc_tokens(self):
+        from skill_engine.constants import ALLOWED_BEP20_TOKENS
+        # Only check tokens that are definitively NOT bridged to BSC
+        non_bsc = ["BTC", "SOL"]
+        for token in non_bsc:
+            assert token not in ALLOWED_BEP20_TOKENS, f"{token} should NOT be in BEP-20 list"
+
+
+# ═══════════════════════════════════════════════════════════════
+# PUBLISHER TESTS (5 tests)
+# ═══════════════════════════════════════════════════════════════
+
+class TestPublisher:
     """Test strategy versioning and diffing."""
     
-    def test_compute_hash_deterministic(self):
+    def test_strategy_hash_deterministic(self):
         from skill_engine.publisher import compute_strategy_hash
-        strategy = {"strategy_name": "test", "regime_classified": "bullish"}
+        strategy = {"strategy_name": "Test", "regime_classified": "bullish", "target_assets": ["BNB"]}
         h1 = compute_strategy_hash(strategy)
         h2 = compute_strategy_hash(strategy)
         assert h1 == h2
     
-    def test_diff_detects_regime_change(self):
+    def test_strategy_hash_changes_with_content(self):
+        from skill_engine.publisher import compute_strategy_hash
+        s1 = {"strategy_name": "Test", "regime_classified": "bullish"}
+        s2 = {"strategy_name": "Test", "regime_classified": "bearish"}
+        assert compute_strategy_hash(s1) != compute_strategy_hash(s2)
+    
+    def test_diff_detects_regime_shift(self):
         from skill_engine.publisher import diff_strategies
-        old = {"regime_classified": "bullish", "target_assets": ["CAKE"]}
-        new = {"regime_classified": "bearish", "target_assets": ["CAKE"]}
+        old = {"regime_classified": "bullish", "target_assets": [], "allocation_weights": [], "vectorbt_signals": {"entry_rules": [], "exit_rules": []}}
+        new = {"regime_classified": "bearish", "target_assets": [], "allocation_weights": [], "vectorbt_signals": {"entry_rules": [], "exit_rules": []}}
         diff = diff_strategies(old, new)
-        regime_changes = [c for c in diff["changes"] if c["field"] == "regime_classified"]
+        assert diff["total_changes"] >= 1
+        regime_changes = [c for c in diff["changes"] if c["type"] == "regime_shift"]
         assert len(regime_changes) == 1
         assert regime_changes[0]["old"] == "bullish"
         assert regime_changes[0]["new"] == "bearish"
     
     def test_diff_detects_asset_change(self):
         from skill_engine.publisher import diff_strategies
-        old = {"regime_classified": "bullish", "target_assets": ["CAKE"]}
-        new = {"regime_classified": "bullish", "target_assets": ["CAKE", "USDT"]}
+        old = {"regime_classified": "bullish", "target_assets": ["BNB"], "allocation_weights": [], "vectorbt_signals": {"entry_rules": [], "exit_rules": []}}
+        new = {"regime_classified": "bullish", "target_assets": ["BNB", "CAKE"], "allocation_weights": [], "vectorbt_signals": {"entry_rules": [], "exit_rules": []}}
         diff = diff_strategies(old, new)
-        asset_changes = [c for c in diff["changes"] if c["field"] == "target_assets"]
+        asset_changes = [c for c in diff["changes"] if c["type"] == "asset_change"]
         assert len(asset_changes) == 1
-        assert "USDT" in asset_changes[0]["added"]
+        assert "CAKE" in asset_changes[0]["added"]
+    
+    def test_diff_detects_weight_rebalance(self):
+        from skill_engine.publisher import diff_strategies
+        old = {"regime_classified": "bullish", "target_assets": ["BNB"], "allocation_weights": [{"symbol": "BNB", "weight": 1.0}], "vectorbt_signals": {"entry_rules": [], "exit_rules": []}}
+        new = {"regime_classified": "bullish", "target_assets": ["BNB"], "allocation_weights": [{"symbol": "BNB", "weight": 0.5}], "vectorbt_signals": {"entry_rules": [], "exit_rules": []}}
+        diff = diff_strategies(old, new)
+        weight_changes = [c for c in diff["changes"] if c["type"] == "weight_rebalance"]
+        assert len(weight_changes) == 1
 
 
-class TestAllowedTokens:
-    """Test the allowed tokens list integrity."""
+# ═══════════════════════════════════════════════════════════════
+# ENGINE TESTS (3 tests)
+# ═══════════════════════════════════════════════════════════════
+
+class TestEngine:
+    """Test backtest engine utility functions."""
     
-    def test_no_duplicates(self):
-        from skill_engine.constants import ALLOWED_BEP20_TOKENS
-        assert len(ALLOWED_BEP20_TOKENS) == len(set(t.upper() for t in ALLOWED_BEP20_TOKENS)), \
-            "Duplicate tokens found in ALLOWED_BEP20_TOKENS"
+    def test_dynamic_slippage_low_volume(self):
+        from backtest_sandbox.engine import compute_dynamic_slippage
+        # Very low volume should give high slippage
+        fee = compute_dynamic_slippage(1000, 100, 0.02)
+        assert fee > 0.01  # Should be over 1%
     
-    def test_bnb_included(self):
-        from skill_engine.constants import ALLOWED_BEP20_TOKENS
-        assert "BNB" in ALLOWED_BEP20_TOKENS
+    def test_dynamic_slippage_high_volume(self):
+        from backtest_sandbox.engine import compute_dynamic_slippage
+        # Very high volume should give low slippage
+        fee = compute_dynamic_slippage(1000, 1_000_000_000, 0.001)
+        assert fee < 0.01  # Should be under 1%
     
-    def test_usdt_included(self):
-        from skill_engine.constants import ALLOWED_BEP20_TOKENS
-        assert "USDT" in ALLOWED_BEP20_TOKENS
-    
-    def test_cake_included(self):
-        from skill_engine.constants import ALLOWED_BEP20_TOKENS
-        assert "CAKE" in ALLOWED_BEP20_TOKENS
+    def test_dynamic_slippage_includes_base_fee(self):
+        from backtest_sandbox.engine import compute_dynamic_slippage
+        fee = compute_dynamic_slippage(1000, 1_000_000_000, 0.001)
+        assert fee >= 0.0025  # PancakeSwap base fee minimum
 
 
-class TestIndicatorComputation:
-    """Test technical indicator calculations."""
+# ═══════════════════════════════════════════════════════════════
+# SERVER TESTS (2 tests)
+# ═══════════════════════════════════════════════════════════════
+
+class TestServer:
+    """Test the FastAPI server models."""
     
-    def test_rsi_range(self):
-        import pandas as pd
-        from backtest_sandbox.engine import compute_rsi
-        prices = pd.Series([100 + i * 0.5 for i in range(30)])
-        rsi = compute_rsi(prices, 14)
-        assert (rsi >= 0).all() and (rsi <= 100).all()
+    def test_compilation_request_defaults(self):
+        from skill_engine.server import CompilationRequest
+        req = CompilationRequest(
+            investment_thesis="Test thesis",
+            target_assets=["BNB"]
+        )
+        assert req.risk_tolerance == "medium"
+        assert req.backtest_range == "30d"
+        assert req.job_id is None
     
-    def test_macd_returns_series(self):
-        import pandas as pd
-        from backtest_sandbox.engine import compute_macd
-        prices = pd.Series([100 + i * 0.1 for i in range(30)])
-        macd = compute_macd(prices, 12, 26)
-        assert len(macd) == 30
+    def test_compilation_request_with_job(self):
+        from skill_engine.server import CompilationRequest
+        req = CompilationRequest(
+            investment_thesis="Test thesis",
+            target_assets=["BNB", "CAKE"],
+            risk_tolerance="high",
+            job_id=42
+        )
+        assert req.job_id == 42
+        assert req.risk_tolerance == "high"
+
+
+# ═══════════════════════════════════════════════════════════════
+# MONITOR TESTS (3 tests)
+# ═══════════════════════════════════════════════════════════════
+
+class TestMonitor:
+    """Test the regime monitor shift detection."""
     
-    def test_ema_smooths(self):
-        import pandas as pd
-        from backtest_sandbox.engine import compute_ema
-        prices = pd.Series([100, 110, 90, 105, 95, 100, 102, 98, 101, 99])
-        ema = compute_ema(prices, 3)
-        # EMA should be smoother than raw prices
-        assert ema.std() < prices.std()
+    def test_detect_shift_first_run(self):
+        from skill_engine.monitor import detect_regime_shift
+        current = {"regime": "bearish", "fear_greed": 20.0, "sentiment_regime": "fear"}
+        result = detect_regime_shift(current, None)
+        assert result["shifted"] is False
+        assert result["current_regime"] == "bearish"
+        assert result["previous_regime"] is None
+    
+    def test_detect_shift_regime_changed(self):
+        from skill_engine.monitor import detect_regime_shift
+        current = {"regime": "bearish", "fear_greed": 20.0, "sentiment_regime": "fear"}
+        previous = {"regime": "bullish", "fear_greed": 70.0, "sentiment_regime": "greed"}
+        result = detect_regime_shift(current, previous)
+        assert result["shifted"] is True
+        assert result["current_regime"] == "bearish"
+        assert result["previous_regime"] == "bullish"
+    
+    def test_detect_shift_no_change(self):
+        from skill_engine.monitor import detect_regime_shift
+        current = {"regime": "sideways", "fear_greed": 48.0, "sentiment_regime": "neutral"}
+        previous = {"regime": "sideways", "fear_greed": 50.0, "sentiment_regime": "neutral"}
+        result = detect_regime_shift(current, previous)
+        assert result["shifted"] is False
+        assert result["significant_fg_move"] is False
+

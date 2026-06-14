@@ -36,6 +36,7 @@ execute_strategy.py
 backtest_report.html
 strategy_changelog.json
 symbol_mappings_cache.json
+monitor_state.json
 
 # Debug/probe scripts (development only)
 probe_*.py

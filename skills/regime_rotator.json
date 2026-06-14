@@ -1,10 +1,13 @@
 {
   "name": "regime_rotator",
-  "version": "2.0.0",
-  "description": "BEP-20 Regime Rotator Skill v2. Generates institutional-grade trading strategies for BEP-20 tokens using real CoinMarketCap Skill Hub MCP intelligence (33 cloud-executed analytical skills: macro regime, KOL sentiment, derivatives, on-chain metrics, narrative rotation, chart patterns). Compiles natural language investment theses into backtestable VectorBT strategy specs with dynamic AMM slippage modeling.",
+  "version": "3.0.0",
+  "description": "BEP-20 Regime Rotator Skill v3. Generates institutional-grade trading strategies using the FULL CoinMarketCap Agent Hub ecosystem: 10 Skill Hub analytical skills (macro regime, KOL sentiment, derivatives, on-chain metrics, narrative rotation, chart patterns, holder risk, whale anomalies, asset structure, daily overview) + 12 Core MCP direct data tools (quotes, TA, news, derivatives, global metrics, narratives, macro events). Supports x402 autonomous payments for keyless data access. Publishes deliverables to BNB Greenfield decentralized storage. Settlement via BNB AI Agent SDK (ERC-8004 identity + ERC-8183 escrow).",
   "skill_hub_endpoint": "https://mcp.coinmarketcap.com/skill-hub/stream",
-  "skill_hub_transport": "streamable-http",
-  "skills_used": [
+  "core_mcp_endpoint": "https://mcp.coinmarketcap.com/mcp",
+  "x402_mcp_endpoint": "https://mcp.coinmarketcap.com/x402/mcp",
+  "transport": "streamable-http",
+  "skill_hub_skills_used": [
+    "daily_market_overview",
     "crypto_macro_overview",
     "monitor_market_sentiment_shift",
     "altcoin_kol_sentiment",
@@ -13,8 +16,27 @@
     "detect_funding_rate_regime_shift",
     "score_holder_concentration_risk",
     "monitor_whale_transfer_anomalies",
-    "assess_altcoin_asset_structure",
-    "daily_market_overview"
+    "assess_altcoin_asset_structure"
+  ],
+  "core_mcp_tools_used": [
+    "search_cryptos",
+    "get_crypto_quotes_latest",
+    "get_crypto_info",
+    "get_crypto_metrics",
+    "get_crypto_technical_analysis",
+    "get_crypto_latest_news",
+    "get_global_market_metrics",
+    "get_trending_narratives",
+    "get_derivatives_data",
+    "get_macro_events",
+    "get_market_cap_ta",
+    "search_crypto_info"
+  ],
+  "bnb_sdk_modules": [
+    "ERC-8004 (Agent Identity)",
+    "ERC-8183 (Agentic Escrow)",
+    "Greenfield (Decentralized Storage)",
+    "MPP + x402 (Autonomous Payments)"
   ],
   "inputs": {
     "type": "object",
@@ -51,11 +73,19 @@
     "properties": {
       "strategy_spec": {
         "type": "object",
-        "description": "The compiled machine-readable JSON backtestable strategy spec with Skill Hub intelligence metadata."
+        "description": "The compiled machine-readable JSON strategy spec with full CMC intelligence metadata."
       },
       "skill_hub_skills_used": {
         "type": "array",
         "description": "List of CMC Skill Hub skills that were executed during compilation."
+      },
+      "core_mcp_tools_used": {
+        "type": "array",
+        "description": "List of CMC Core MCP tools called for data enrichment."
+      },
+      "storage_urls": {
+        "type": "object",
+        "description": "Greenfield and IPFS URLs where deliverables were published."
       }
     }
   }

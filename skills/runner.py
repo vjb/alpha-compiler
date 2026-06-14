@@ -10,7 +10,7 @@ from backtest_sandbox.engine import run_backtest
 from skill_engine.constants import ALLOWED_BEP20_TOKENS
 from skill_engine.agent_core import get_wallet_provider
 from bnbagent.erc8183 import ERC8183Client
-from skill_engine.exporter import generate_execution_script
+from skill_engine.publisher import record_strategy_version, publish_deliverables
 from skill_engine.skill_hub_client import SkillHubClient
 
 # 1. Load skill configuration
@@ -26,7 +26,7 @@ mcp = FastMCP(
 # 3. Define the main regime rotator tool
 @mcp.tool(
     name=skill_config["name"],
-    description="Compiles natural language thesis to strategy JSON using CMC Skill Hub MCP intelligence (33 real analytical skills), executes backtesting simulation with dynamic AMM slippage, and exports PancakeSwap web3 swap scripts. Supports optional ERC-8183 escrow validation and settlement."
+    description="Compiles natural language thesis to strategy JSON using CMC Skill Hub MCP intelligence (10 cloud-executed analytical skills), CMC Core MCP data (12 direct tools), executes VectorBT backtesting with dynamic AMM slippage, and publishes deliverables to BNB Greenfield/IPFS. Supports ERC-8183 escrow validation and settlement."
 )
 def regime_rotator(investment_thesis: str, target_assets: list[str], risk_tolerance: str, job_id: int = None, backtest_range: str = "30d") -> dict:
     """
@@ -77,13 +77,26 @@ def regime_rotator(investment_thesis: str, target_assets: list[str], risk_tolera
     run_backtest()
 
     # Generate PancakeSwap web3 execution script
+    # NOTE: Execution script generation removed for Track 2 compliance.
+    # Track 2 is purely analytical — strategies are compiled, backtested,
+    # and published as research deliverables, not executed on-chain.
+
+    # Publish deliverables (Greenfield + IPFS)
+    print("Publishing deliverables to decentralized storage...", file=sys.stderr)
     try:
-        script_code = generate_execution_script(spec.model_dump())
-        with open("execute_strategy.py", "w") as f:
-            f.write(script_code)
-        print("Deployable PancakeSwap swap execution script saved to execute_strategy.py", file=sys.stderr)
+        storage_urls = publish_deliverables(spec.model_dump())
+        print(f"Storage URLs: {json.dumps(storage_urls)}", file=sys.stderr)
     except Exception as e:
-        print(f"Failed to generate execution script: {e}", file=sys.stderr)
+        print(f"Deliverable publishing failed (non-fatal): {e}", file=sys.stderr)
+        storage_urls = {"greenfield": None, "ipfs": None}
+
+    # Record strategy version
+    try:
+        version_entry = record_strategy_version(spec.model_dump())
+        print(f"Strategy version recorded: v{version_entry.get('version', '?')}", file=sys.stderr)
+    except Exception as e:
+        print(f"Version recording failed (non-fatal): {e}", file=sys.stderr)
+        version_entry = {}
 
     # Trigger Escrow Settlement if job_id is passed
     if job_id is not None:
@@ -103,15 +116,31 @@ def regime_rotator(investment_thesis: str, target_assets: list[str], risk_tolera
     
     return {
         "status": "success",
-        "message": "Strategy compiled with CMC Skill Hub MCP intelligence, backtest executed with dynamic slippage, and execution script exported.",
+        "message": "Strategy compiled with CMC Skill Hub MCP + Core MCP intelligence, backtest executed with dynamic slippage, deliverables published.",
         "x402_fees_charged": "0.01 USDC",
         "skill_hub_skills_used": [
+            "daily_market_overview",
             "crypto_macro_overview",
             "monitor_market_sentiment_shift", 
             "altcoin_kol_sentiment",
             "track_narrative_rotation",
-            "kline_pattern_recognition"
+            "kline_pattern_recognition",
+            "detect_funding_rate_regime_shift",
+            "score_holder_concentration_risk",
+            "monitor_whale_transfer_anomalies",
+            "assess_altcoin_asset_structure",
         ],
+        "core_mcp_tools_used": [
+            "search_cryptos",
+            "get_crypto_quotes_latest",
+            "get_global_market_metrics",
+            "get_trending_narratives",
+            "get_derivatives_data",
+            "get_macro_events",
+            "get_crypto_technical_analysis",
+            "get_crypto_latest_news",
+        ],
+        "storage_urls": storage_urls,
         "strategy_spec": spec.model_dump()
     }
 

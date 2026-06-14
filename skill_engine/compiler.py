@@ -19,6 +19,10 @@ from skill_engine.skill_hub_client import (
     extract_kol_sentiment_summary,
     summarize_intelligence_for_llm,
 )
+from skill_engine.cmc_mcp_client import (
+    CoreMCPClient,
+    summarize_core_intelligence_for_llm,
+)
 
 load_dotenv()
 
@@ -239,7 +243,7 @@ def calculate_technical_indicators(df: pd.DataFrame) -> Dict[str, float]:
     }
 
 class ThesisToCodeStrategyCompiler:
-    """Institutional-grade strategy compiler service powered by CMC Skill Hub MCP + bnbagent-sdk."""
+    """Institutional-grade strategy compiler service powered by CMC Skill Hub MCP + Core MCP + bnbagent-sdk."""
     def __init__(self):
         # Instantiate BNBAgent from environment to manage configuration and identity
         self.sdk = BNBAgent.from_env()
@@ -251,10 +255,15 @@ class ThesisToCodeStrategyCompiler:
         
         self.rest_client = CoinMarketCapRESTClient(self.cmc_api_key)
         
-        # Initialize CMC Skill Hub MCP client
+        # Initialize CMC Core MCP client (12 direct tools — FAST layer)
+        self.core_mcp = CoreMCPClient(self.cmc_api_key)
+        self.core_mcp.initialize()
+        print("[Compiler] CMC Core MCP client initialized (12 tools).", file=sys.stderr)
+        
+        # Initialize CMC Skill Hub MCP client (10 analytical skills — DEEP layer)
         self.skill_hub = SkillHubClient(self.cmc_api_key)
         self.skill_hub.initialize()
-        print("[Compiler] CMC Skill Hub MCP client initialized.", file=sys.stderr)
+        print("[Compiler] CMC Skill Hub MCP client initialized (10 skills).", file=sys.stderr)
 
     def compile(self, investment_thesis: str, target_assets: List[str], risk_tolerance: str, backtest_range: str = "30d") -> StrategySpec:
         # 1. Validate thesis text for disallowed tokens
@@ -270,10 +279,22 @@ class ThesisToCodeStrategyCompiler:
         target_assets = normalized_assets
 
         # ═══════════════════════════════════════════════════════════════
-        # 3. GATHER INTELLIGENCE FROM CMC SKILL HUB MCP
+        # 3a. FAST LAYER: Core MCP (12 direct tools, ~5-10s)
         # ═══════════════════════════════════════════════════════════════
         print("\n" + "="*70, file=sys.stderr)
-        print("PHASE 1: Gathering intelligence from CMC Skill Hub MCP", file=sys.stderr)
+        print("PHASE 1a: FAST layer — Core MCP (12 tools)", file=sys.stderr)
+        print("="*70, file=sys.stderr)
+        
+        core_intelligence = self.core_mcp.gather_core_intelligence(target_assets)
+        core_summary = summarize_core_intelligence_for_llm(core_intelligence)
+        
+        print(f"[Compiler] Core MCP gathered: {len(core_intelligence.get('tools_called', []))} tool calls", file=sys.stderr)
+        
+        # ═══════════════════════════════════════════════════════════════
+        # 3b. DEEP LAYER: Skill Hub MCP (10 analytical skills, ~60-120s)
+        # ═══════════════════════════════════════════════════════════════
+        print("\n" + "="*70, file=sys.stderr)
+        print("PHASE 1b: DEEP layer — Skill Hub MCP (10 skills)", file=sys.stderr)
         print("="*70, file=sys.stderr)
         
         intelligence = self.skill_hub.gather_compilation_intelligence(target_assets)
@@ -388,8 +409,16 @@ class ThesisToCodeStrategyCompiler:
         print("PHASE 3: Compiling strategy via LLM with Skill Hub intelligence", file=sys.stderr)
         print("="*70, file=sys.stderr)
         
-        # Generate the intelligence summary for the LLM
-        intel_summary = summarize_intelligence_for_llm(intelligence)
+        # Generate the intelligence summaries for the LLM (BOTH layers)
+        skill_hub_summary = summarize_intelligence_for_llm(intelligence)
+        
+        # Merge both MCP layers into a single intelligence block
+        intel_summary = (
+            "══════════ CORE MCP LAYER (fast, structured data) ══════════\n"
+            + core_summary + "\n\n"
+            + "══════════ SKILL HUB LAYER (deep analytical evidence) ══════════\n"
+            + skill_hub_summary
+        )
         
         from openai import OpenAI
         openai_client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
@@ -398,9 +427,11 @@ class ThesisToCodeStrategyCompiler:
             "You are the Principal Quant AI Architect. Your task is to compile a natural language investment thesis "
             "into a machine-readable JSON trading strategy spec. "
             "You MUST classify the strategy for the given regime (bullish, bearish, sideways). "
-            "You have access to REAL market intelligence from the CoinMarketCap Skill Hub MCP, including: "
-            "macro regime analysis, KOL sentiment, funding rates, market sentiment regime, and narrative rotation data. "
-            "Use this intelligence to make informed decisions about allocation and signal rules. "
+            "You have access to TWO layers of REAL market intelligence from CoinMarketCap:\n"
+            "  LAYER 1 (Core MCP): 12 direct data tools — real-time quotes, technical analysis, derivatives, news, global metrics, narratives, macro events.\n"
+            "  LAYER 2 (Skill Hub MCP): 10 cloud-executed analytical skills — macro regime, KOL sentiment, funding rate regimes, "
+            "holder concentration, whale anomalies, asset structure, narrative rotation, and chart patterns.\n"
+            "Use BOTH layers to make the most informed decisions possible about allocation and signal rules. "
             "\n\n"
             "Formulate the strategy spec including: "
             "1. strategy_name: a descriptive name for the strategy. "
@@ -415,7 +446,7 @@ class ThesisToCodeStrategyCompiler:
             "   SKILL HUB: 'kol_sentiment_bias' (range: -1 to +1), 'funding_rate_bps', 'sentiment_regime_score' (0-100), 'whale_anomaly_score' "
             "   LEGACY: 'news_sentiment_score', 'top_10_holder_percentage', 'liquidation_volume_short_24h' "
             "8. backtest_range: must match the requested range. "
-            "9. skill_hub_intelligence_summary: a one-paragraph summary of the key Skill Hub insights that shaped this strategy. "
+            "9. skill_hub_intelligence_summary: a one-paragraph summary of the key insights from BOTH Core MCP and Skill Hub that shaped this strategy. "
             "10. compilation_timestamp: the provided timestamp."
         )
         
@@ -427,9 +458,9 @@ Classified Market Regime: {regime} (Fear & Greed index is {fg_value})
 Requested Backtest Range: {backtest_range}
 Compilation Timestamp: {intelligence.get('timestamp', time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()))}
 
-══════════════════════════════════════════
-CMC SKILL HUB MCP INTELLIGENCE (REAL DATA)
-══════════════════════════════════════════
+══════════════════════════════════════════════════════════
+CMC INTELLIGENCE (Core MCP: {len(core_intelligence.get('tools_called', []))} tools + Skill Hub: {len(intelligence.get('skills_called', []))} skills)
+══════════════════════════════════════════════════════════
 {intel_summary}
 
 ══════════════════════════════════════════
