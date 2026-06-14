@@ -37,43 +37,34 @@ The input is a sentence. The output is an institution-grade, verifiable strategy
 
 ## How It Works
 
-```
-┌─────────────────────┐
-│  "Rotate into       │
-│   stablecoins when  │     ┌──────────────────────────────────┐
-│   fear is high"     │────▶│  1a. Core MCP (FAST, ~5s)        │
-│                     │     │     • get_global_metrics_latest   │
-│  + target assets    │     │     • get_crypto_technical_analysis│
-│  + risk tolerance   │     │     • get_crypto_latest_news      │
-└─────────────────────┘     │     • trending_crypto_narratives  │
-                            │     • get_upcoming_macro_events   │
-                            └───────────────┬──────────────────┘
-                                            │
-                            ┌──────────────────────────────────┐
-                            │  1b. Skill Hub MCP (DEEP, ~120s) │
-                            │     • crypto_macro_overview       │
-                            │     • altcoin_kol_sentiment       │
-                            │     • monitor_market_sentiment    │
-                            │     • kline_pattern_recognition   │
-                            │     • track_narrative_rotation    │
-                            └───────────────┬──────────────────┘
-                                            │
-                                            ▼
-                            ┌──────────────────────────────────┐
-                            │  2. Strategy Compiler (GPT-4o)   │
-                            │     Thesis + BOTH MCP layers     │
-                            │     → StrategySpec JSON          │
-                            └───────────────┬──────────────────┘
-                                            │
-                      ┌─────────────────────┼─────────────────────┐
-                      ▼                     ▼                     ▼
-            ┌──────────────┐    ┌───────────────────┐   ┌─────────────────┐
-            │ strategy.json│    │ backtest_report    │   │ changelog.json  │
-            │              │    │ .html              │   │                 │
-            │ Machine-     │    │ Interactive        │   │ Versioned Diff  │
-            │ Readable     │    │ Performance        │   │ of Strategy     │
-            │ Strategy Spec│    │ Dashboard          │   │ Changes         │
-            └──────────────┘    └───────────────────┘   └─────────────────┘
+```mermaid
+graph TD
+    classDef default fill:#11111b,stroke:#a6adc8,stroke-width:1px,color:#cdd6f4;
+    classDef input fill:#182525,stroke:#4fceb9,stroke-width:2px,color:#4fceb9;
+    classDef mcp fill:#1e1e2e,stroke:#89b4fa,stroke-width:2px,color:#89b4fa;
+    classDef compiler fill:#2e1e2e,stroke:#cba6f7,stroke-width:2px,color:#cba6f7;
+    classDef output fill:#252518,stroke:#f9e2af,stroke-width:2px,color:#f9e2af;
+
+    Input["Thesis Input<br>• 'Rotate into stablecoins when fear is high'<br>• Target assets<br>• Risk tolerance"]:::input
+
+    subgraph Intelligence ["Intelligence Gathering (Dual-Layer MCP)"]
+        Core["1a. Core MCP (FAST, ~5s)<br>• get_global_metrics_latest<br>• get_crypto_technical_analysis<br>• get_crypto_latest_news<br>• trending_crypto_narratives<br>• get_upcoming_macro_events"]:::mcp
+        
+        SkillHub["1b. Skill Hub MCP (DEEP, ~120s)<br>• crypto_macro_overview<br>• altcoin_kol_sentiment<br>• monitor_market_sentiment<br>• kline_pattern_recognition<br>• track_narrative_rotation"]:::mcp
+    end
+
+    Compiler["2. Strategy Compiler (GPT-4o)<br>Thesis + BOTH MCP layers<br>→ StrategySpec JSON"]:::compiler
+
+    Strategy["strategy.json<br>Machine-Readable Strategy Spec"]:::output
+    Backtest["backtest_report.html<br>Interactive Performance Dashboard"]:::output
+    Changelog["changelog.json<br>Versioned Diff of Changes"]:::output
+
+    Input --> Core
+    Core --> SkillHub
+    SkillHub --> Compiler
+    Compiler --> Strategy
+    Compiler --> Backtest
+    Compiler --> Changelog
 ```
 
 ---
